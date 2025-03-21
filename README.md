@@ -17,7 +17,7 @@ This system has three key capabilities:
 
 ### 1. Trajectory Visualization
 - Orthogonal, plan, front, and side view plots.
-- Real-time rendering of robot joint positions and gripper orientation.
+- Real-time rendering of the robot.
 - Color-coded lines for different construction elements.
 - CEP50 plots for evaluating dispersion in trajectory data.
 - Forward paths use thick lines; return paths use thin lines.
@@ -45,12 +45,7 @@ This system has three key capabilities:
 ### 4. Worker Detection
 - Uses ArUco markers to identify and track workers.
 - Evaluates detection accuracy (target error: 1–2 cm).
-- Assigns IDs and instance numbers (e.g., 00_01, 01_02).
-- Performs multiple test configurations:
-  - Static worker + static camera
-  - Static worker + moving camera
 - FOV (field of view) analysis of visible/non-visible zones.
-- Error analysis and mapping with camera specs.
 
 ### 5. Obstacle Avoidance and Safety
 - Robot alters path by 10 cm inward upon worker detection.
