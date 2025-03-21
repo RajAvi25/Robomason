@@ -1,91 +1,111 @@
 # Robotic Construction and Worker Detection System
 
-This project focuses on autonomous robotic construction with integrated real-time safety and worker detection. It includes multi-angle trajectory visualization, worker detection using ArUco markers, obstacle avoidance, data logging, and construction task automation.
+This project combines robotic construction automation with real-time worker detection and safety mechanisms. The system visualizes robot trajectories, detects workers using camera systems, computes accurate world coordinates from image frames, and logs detailed task and safety data.
 
 ---
 
 ## Project Overview
 
-This system has three key capabilities:
-- Robotic automation of construction tasks using a UR5e robot.
-- Real-time worker detection using computer vision and ArUco markers.
-- Multi-angle visualization and in-depth analysis of robot motion and safety behavior.
+This system is composed of:
+
+- A UR5e robot for construction automation.
+- A camera-based worker detection system using ArUco markers.
+- Data pipelines for visualization, analysis, and safety management.
+- Multi-phase construction cycle: Scanning → Assembly → Disassembly → Reassembly.
 
 ---
 
 ## Features
 
 ### 1. Trajectory Visualization
-- Orthogonal, plan, front, and side view plots.
-- Real-time rendering of the robot.
-- Color-coded lines for different construction elements.
-- CEP50 plots for evaluating dispersion in trajectory data.
-- Forward paths use thick lines; return paths use thin lines.
+- Plots from multiple angles: plan, front, side, and orthogonal views.
+- Displays historical and real-time robot joint positions.
+- Thick lines represent forward motion; thin lines represent return.
+- Color-coded by construction element.
+- CEP50 plots to analyze path dispersion.
 
-### 2. Data Collection and Analysis
-- Logs construction task metrics such as:
-  - Task ID
-  - Timestamps (start, stop)
-  - Elapsed time
-  - Trajectory length
-  - Velocity, acceleration
-  - Path efficiency and curvature
-- Logs worker detection data:
-  - Worker ID and instance
-  - Timestamp
-  - 3D position
-- Annotated tables generated in post-processing.
-- Path and curvature analysis to assess construction accuracy.
+### 2. Construction Process
+The construction process is structured into four phases:
+1. Scanning
+2. Assembly
+3. Disassembly
+4. Reassembly
 
-### 3. Construction Automation
-- Supports assembly, disassembly, and reassembly of elements.
-- Handles positional adjustments (e.g., raising modules by 2mm).
-- Disassembly site relocated behind the robot for efficiency.
-
+Each phase utilizes two predefined ArUco marker locations for worker simulation and safety analysis.
+---
 ### 4. Worker Detection
 - Uses ArUco markers to identify and track workers.
 - Evaluates detection accuracy (target error: 1–2 cm).
 - FOV (field of view) analysis of visible/non-visible zones.
 
-### 5. Obstacle Avoidance and Safety
-- Robot alters path by 10 cm inward upon worker detection.
-- Triggers avoidance when worker appears in the bottom 30% of the FOV.
-- Identifies a safe joint configuration for robot shutdown.
+Worker locations are calculated using:
+- Image center offset
+- Pixels-per-meter scaling
+- Known camera height and orientation (downward-facing)
+- Ground plane assumption (Z=0)
 
 ---
 
-## Data Format
+## 4. Obstacle Avoidance and Safety
+
+- If a worker appears in the **bottom 30% of the camera’s field of view**, the robot performs a detour (inward movement by 10 cm).
+- Safe joint positions are saved to protect the robot after daily operation.
+- Avoidance motion is logged along with trajectory and detection data.
+
+---
+
+## 5. Data Collection and Post-Processing
 
 ### Construction Data Table
 
 | Task ID | Task Description | Start Time | End Time | Elapsed Time | Trajectory Length | Avg Velocity | Avg Acceleration | Path Efficiency | Avg Curvature |
-|---------|------------------|------------|----------|---------------|-------------------|--------------|------------------|------------------|----------------|
 
 ### Worker Detection Table
 
 | Worker ID | Instance | Timestamp | X | Y | Z |
-|-----------|----------|-----------|---|---|---|
+
+- Logs include curvature, velocity, path efficiency, etc.
+- Used to assess system responsiveness and detect failures or inefficiencies.
 
 ---
 
-## Experimental Notes
+## 6. Camera Field of View (FOV) Analysis
 
-- **Camera FOV Analysis:** Measurements conducted to compare actual FOV with datasheet specs.
-- **FOV Calculations:** Measured FOVs averaged ~60.3° (horizontal) and ~45.3° (vertical) versus expected values of 65° ±2 and 40° ±1.
-- **Worker Detection Mapping:** Includes plan and isometric plots of detected positions.
-
----
-
-## Technologies
-
-- Python
-- OpenCV (for ArUco marker detection)
-- Matplotlib / Plotly (for data visualization)
-- UR5e Robot API
-- OnRobot Eye Camera
+- **Camera datasheet values:**
+  - Horizontal FOV: 65 ±2°
+  - Vertical FOV: 40 ±1°
+- Measured values across multiple tests:
+  - Average horizontal: 60.32°
+  - Average vertical: 45.3°
+- Discrepancies visualized; intersection of FOV cone and ground plane plotted.
 
 ---
 
-## License
+## 📁 Repository Structure
 
-MIT License. See the `LICENSE` file for details.
+| Folder/File | Description |
+|------------|-------------|
+| `robomason/` | Main project folder |
+| ├── `UserWindow.ipynb` | Jupyter notebook for UI calibration |
+| ├── `system_config.py` | System configuration file |
+| ├── `ifc/` | IFC file handling module |
+| │ ├── `IFC_functions.py` | Functions related to IFC processing |
+| │ ├── `ifc_loader.py` | IFC file loader script |
+| ├── `_workingdata/` | Contains all experiment runs, trajectory data, and visualizations |
+| │ ├── `_disassemblyruns/` | Data from disassembly experiments |
+| │ │ ├── `Disassembly_live_camera.mp4` | Recorded video from live camera |
+| │ │ ├── `trajectory_summary.xlsx` | Summary of recorded trajectories |
+| │ ├── `_constructionruns/` | Data from construction experiments |
+| │ ├── `_reconstructionruns/` | Data from reconstruction experiments |
+| │ ├── `_rawtrajectories/` | Raw trajectory files |
+| │ ├── `IFC/` | IFC project files |
+| │ ├── `_siteinfo/` | Saved site positions |
+| ├── `ui/` | User interface modules |
+| ├── `camera/` | Camera-related processing code |
+| ├── `construct/` | Construction process logic |
+| ├── `robot_controller/` | Robot control logic |
+| ├── `plotting/` | Plotting and visualization utilities |
+| ├── `detections/` | Object and worker detection code |
+| ├── `tracker/` | Tracking algorithms and localization |
+
+
