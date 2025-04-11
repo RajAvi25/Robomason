@@ -1,7 +1,7 @@
 #camera/live_camera.py
 import threading
 from .frame_handler import FrameHandler
-from .annotate import liveFeedAruco
+from .annotate import liveFeedAruco, transmitFeed
 
 def main():
     ws_url = "ws://localhost:9090"   
@@ -16,8 +16,9 @@ def main():
         is_sender=True
     )
     
-    camera_thread = threading.Thread(target=liveFeedAruco, args=(publisher,))
-    camera_thread.daemon = True  # Daemonize so it won't block shutdown
+    camera_thread = threading.Thread(target=liveFeedAruco, args=(publisher,)) #Run this line for general camera feed display
+    # camera_thread = threading.Thread(target=transmitFeed, args=(publisher,))  #Run this line for integrated camera feed display
+    camera_thread.daemon = True  
     camera_thread.start()
 
     # Begin streaming frames over WebSocket

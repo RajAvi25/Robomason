@@ -1,4 +1,4 @@
-# plotting/zmq_receiver.py
+# plotting/receiver.py
 import zmq
 import msgpack
 from .config import ZMQ_ADDRESS, SUBSCRIBE_TOPIC, PACKET_SKIP

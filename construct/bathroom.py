@@ -2,6 +2,7 @@
 
 import cv2
 from func_timeout import FunctionTimedOut, func_timeout
+import random
 import numpy as np
 import matplotlib.pyplot as plt
 from system_config import *
@@ -11,6 +12,9 @@ from .utils import calculate_distance
 import ui.MarkerDetectionLocalization as mdl
 import time
 from math import pi
+from .construction import swing
+
+from . import construction_status
 
 def find_center(frame, LB, UB, min_area, max_area, debug=False):
     """
@@ -233,3 +237,86 @@ def handle_toilet_placement(IFC_sorted, n_placed, frame_handler, ct_pos, st_pos)
     moveJ(ct_pos, ACC, VEL)
     toilet_place_pos = place_toilet(IFC_sorted, n_placed)
     return (toilet_grab_pos, toilet_place_pos)
+
+def ask_for_color(_framehandler, idx, timeout=5):
+    elements = f'bathroom_module_{idx}'
+    activity= 'search'
+
+    with construction_status.state_lock:
+        construction_status.state["current_element"] = elements
+        construction_status.state["current_state"] = activity
+    # Unpack color detection results
+    red_found, blue_found = check_frame(bathroom_module_color_thresholds, bathroom_module_area_thresholds, _framehandler)
+    print("Red found =", red_found)
+    print("Blue found =", blue_found)
+
+    # Only allow colors that exist in the frame
+    available_colors = []
+    if red_found:
+        available_colors.append('r')
+    if blue_found:
+        available_colors.append('b')
+
+    # If neither color is found, no decision can be made
+    if not available_colors:
+        print("No red or blue color found in the frame. Cannot place any toilet.")
+        return None
+
+    # Ask user to pick a color
+    answer = None
+    try:
+        answer = func_timeout(timeout, lambda: input(f"Input color of toilet you want placed {available_colors}:\n")).strip().lower()
+    except FunctionTimedOut:
+        print("Too slow, I will just pick a color for you!")
+
+    # Validate user input
+    if answer in available_colors:
+        pass  # valid input already
+    elif answer in ("red", "r"):
+        answer = "r"
+    elif answer in ("blue", "b"):
+        answer = "b"
+    else:
+        answer = random.choice(available_colors)
+        print(f"Auto-selected color: {answer}")
+        
+    return answer
+
+def pick_bathroom_module(color, idx,_framehandler):
+    elements = f'bathroom_module_{idx}'
+    activity= 'pick'
+
+    with construction_status.state_lock:
+        construction_status.state["current_element"] = elements
+        construction_status.state["current_state"] = activity
+
+    if color == 'r':
+        toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["red"]["LB"], 
+        bathroom_module_color_thresholds["red"]["UB"], _framehandler)
+
+    elif color == 'b':
+        toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["blue"]["LB"], 
+            bathroom_module_color_thresholds["blue"]["UB"],_framehandler)
+    return toilet_pos_grab
+
+def place_bathroom_module(IFC_sorted, idx, n_placed):
+    elements = f'bathroom_module_{idx}'
+    activity= 'place'
+
+    with construction_status.state_lock:
+        construction_status.state["current_element"] = elements
+        construction_status.state["current_state"] = activity
+
+    toilet_pos = place_toilet(IFC_sorted, n_placed)
+    return toilet_pos
+
+def routine_for_bathroom(_framehandler, idx, place_pos_bathroom, pickup_pos_element, _IFC_sorted, n_placed):
+    print("We should now place a colored toilet!")
+    answer = ask_for_color(_framehandler,idx)
+    time.sleep(0.5)
+    toilet_pos_grab = pick_bathroom_module(answer, idx,_framehandler)
+    time.sleep(0.5)
+    swing(place_pos_bathroom,f"bathroom_module_{idx}","swing")
+    toilet_pos = place_bathroom_module( _IFC_sorted, idx, n_placed)
+    swing(pickup_pos_element,f"bathroom_module_{idx}","swing_back")
+    return toilet_pos_grab, toilet_pos

@@ -1,22 +1,28 @@
 # construct/construction.py
-
 import time
-import pandas as pd
-from math import pi
 from datetime import datetime
-import cv2
+from func_timeout import FunctionTimedOut, func_timeout
+import pickle
+
+import pandas as pd
+# import cv2
+
+from math import pi
+
+from collections import defaultdict, Counter
+
 from system_config import *
 from construction_config import *
+
 from ui.mobility import moveJ, translate,set_orientation, gripper_width
 import ui.MarkerDetectionLocalization as mdl
-import pickle
-from .marker_pose import find_part
+
+from .marker_pose import find_part, align_with_random_part
 from detections.marker_detector import MarkerDetector
 from .bathroom import *
-from func_timeout import FunctionTimedOut, func_timeout
+
 from . import construction_status
 
-# --- Site Scanning Routine ---
 def scan_site(frame_handler, use_stub=False):
     """
     Scans the construction site and returns key positions:
@@ -26,7 +32,7 @@ def scan_site(frame_handler, use_stub=False):
     If use_stub is True, positions are loaded from a file.
     """
     if not use_stub:
-        print('Performing site scan (real routine)')
+        print('Performing site scan')
         moveJ(camera_pos1, ACC, VEL)
         
         # Determine Pickup Position using the storage marker:
@@ -35,9 +41,7 @@ def scan_site(frame_handler, use_stub=False):
         translate((0.15, 0.1, z_offset_value), ACC, VEL)
         
         # Determine Construction Site Position:
-        moveJ(drop_pos, ACC, VEL)
-        translate((-0.1, 0, 0), ACC, VEL)
-        translate((0, 0, -0.08), ACC, VEL)
+        moveJ(camera_pos2, ACC, VEL)
         ct_pos = find_part(MARKER_DICT["construction"], frame_handler)
         
         # Determine Storage Position:
@@ -53,6 +57,28 @@ def scan_site(frame_handler, use_stub=False):
         with open(path, "rb") as f:
             pu_pos, ct_pos, st_pos, _ = pickle.load(f)
     return pu_pos, ct_pos, st_pos
+
+def update_site_positions(pu_pos, ct_pos, st_pos, extra_data=None):
+    """
+    Saves the scanned site positions to file.
+    """
+    path = "/home/avi/Desktop/robomason/_workingdata/_siteinfo/saved_positions.pkl"
+    with open(path, "wb") as f:
+        pickle.dump((pu_pos, ct_pos, st_pos, extra_data), f)
+
+# update_site_positions(pu_pos, ct_pos, st_pos)
+
+
+def rotation_matrix_to_vector(rotation_matrix):
+            theta = np.arccos((np.trace(rotation_matrix) - 1) / 2)
+            if np.isclose(theta, 0):
+                return np.zeros(3)
+            r = np.array([
+                rotation_matrix[2, 1] - rotation_matrix[1, 2],
+                rotation_matrix[0, 2] - rotation_matrix[2, 0],
+                rotation_matrix[1, 0] - rotation_matrix[0, 1]
+            ]) / (2 * np.sin(theta))
+            return r * theta
 
 def grab(pu_pos, part_id,_framehandler):
 #Inputs are:
@@ -211,517 +237,578 @@ def place(ct_pos, place_coords, part_id,floorpartid):
 
     return placed_pos
 
-# --- Construction Routine ---
-def perform_construction(IFC_sorted, marker_dict, frame_handler):
-    
-    item_list = []
-    block_list = []
-    placed_positions = []
-    df = pd.DataFrame({'task': [], 'start date': [], 'end date': []})
-    
-    start_time = datetime.now()
+def pick_random_element(_part_id, _length_mark, _x_offset, _y_offset,_z_level_, _gripper_width_, _framehandler):
+    clarity_shift = 0.025
+    #go to pickup location
+    pu_pos, ct_pos, st_pos = scan_site(_framehandler,True)
+    pickup_loaction = pu_pos
+    moveJ(pickup_loaction, ACC, VEL)
+    translate((0,0,clarity_shift),ACC, VEL) # Move down a bit to read marker better.
+    #Orient
+    set_orientation(orientations['pu'],ACC, VEL)
+    #find object
+    align_with_random_part(_part_id, _length_mark, _framehandler)   #this centers over the foundation
+    gripper_width(100)
+    #Align 
+    translate((_x_offset,_y_offset,0),ACC,VEL)
+    #Go down
+    c = mdl.get_EE_coords()
+    c[2] = _z_level_
+    o = mdl.get_orientation()
+    rotation_vector = rotation_matrix_to_vector(np.array(o))
+    c.extend(rotation_vector.tolist())
+    #Go-to new position
+    moveL(c, ACC, VEL)
+    #Close_gripper
+    gripper_width(_gripper_width_)
+    time.sleep(2)
+    #Move up
+    translate((0,0,-0.06),ACC, VEL)
 
-    elements = 'Scanning site'
-    activity= 'grab'
+def place_random_element(_z_level_, _rotation, _framehandler):
+    construction_point_x = 0.15
+    construction_point_y = 0.025
+
+    pu_pos, ct_pos, st_pos = scan_site(_framehandler,True)
+    moveJ(ct_pos, ACC, VEL)
+    set_orientation(orientations['ct'], ACC, VEL)
+
+    translate((construction_point_x,construction_point_y,0), ACC, VEL)
+
+    #Rotates the gripper. 
+    current_posj = mdl.get_joints()
+    # current_posj[5] += pi/2 - 0.005
+    current_posj[5] += _rotation
+    moveJ(current_posj, ACC, VEL)
+
+    #go down
+    c = mdl.get_EE_coords()
+    c[2] = _z_level_
+    o = mdl.get_orientation()
+    rotation_vector = rotation_matrix_to_vector(np.array(o))
+    c.extend(rotation_vector.tolist())
+    #Go-to new position
+    moveL(c, ACC, VEL)
+    gripper_width(100)
+    translate((0,0,-0.06),ACC, VEL)
+
+def check_continue():
+    file_path = '/home/avi/Desktop/robomason/_workingdata/_siteinfo/_Construction_state/_stage.txt'
+    with open(file_path, 'r') as file:
+        index = int(file.read())
+    return index
+
+def update_continue(param):
+    # Path to the file
+    file_path = '/home/avi/Desktop/robomason/_workingdata/_siteinfo/_Construction_state/_stage.txt'
+    index = str(param)
+    with open(file_path, 'w') as file:
+        file.write(index)
+
+
+def swing(_pos, item,activity):
+    elements = item
+    # activity= 'swing' or 'swing_back'
+
+    with construction_status.state_lock:
+        construction_status.state["current_element"] = elements
+        construction_status.state["current_state"] = activity
+        
+    moveJ(_pos, ACC, VEL)
+
+def search_element(item,_framehandler, pos = 'pu', marker_dict = MARKER_DICT):
+    elements = item
+    activity= 'search'
+
+    if item != "Foundation":
+        item = item.split("_")[0]
 
     with construction_status.state_lock:
         construction_status.state["current_element"] = elements
         construction_status.state["current_state"] = activity
 
-    pu_pos, ct_pos, st_pos = scan_site(frame_handler, use_stub = False)
+    print(f"Searching for {item}") 
+    task = "Placing " + item
+    img = _framehandler.get_latest_frame()
+    _, ids = MarkerDetector.find_objects(img)
 
-    end_time = datetime.now()
-    df.loc[len(df)] = {"task": "Initializing", "start date": start_time, "end date": end_time}
+    if (ids is not None and marker_dict.get(item) in ids):
+        img = _framehandler.get_latest_frame()
+        _, ids = MarkerDetector.find_objects(img)
+        print("The item is here:")
+    set_orientation(orientations[pos],ACC, VEL)
+
+    find_part(marker_dict.get(item), _framehandler)   #this centers over the foundation
+    #open gripper
+    gripper_width(100)
+
+def pick_element(item, marker_dict = MARKER_DICT):
+    elements = item
+    activity= 'pick'
+
+    if item != "Foundation":
+        item = item.split("_")[0]
+
+    with construction_status.state_lock:
+        construction_status.state["current_element"] = elements
+        construction_status.state["current_state"] = activity
+
+    if marker_dict.get(item) == 11:
+        #approach and pick up part!
+        z_offset = mdl.get_EE_coords()[2] + pickup_offsets["foundation"]["z"]  #mdl.get_EE_coords()[2] is the current z posistion of the tool
+        translate((pickup_offsets["foundation"]["x"], pickup_offsets["foundation"]["y"], 0), ACC, VEL)
+        translate((0, 0, z_offset), ACC, VEL)
+        gripper_width(70)
+        gripper_width(60)
+        time.sleep(2.0)
+        translate((0, 0, -z_offset), ACC, VEL)
+        
+    elif marker_dict.get(item) == 10:   #For the wall
+        z_offset = mdl.get_EE_coords()[2] + pickup_offsets["wall"]["z"] 
+        translate((pickup_offsets["wall"]["x"], pickup_offsets["wall"]["y"], 0), ACC, VEL)
+        translate((0, 0, z_offset), ACC, VEL)
+        time.sleep(0.25)
+        gripper_width(95)
+        time.sleep(1.25)
+        translate((0, 0, -z_offset), ACC, VEL)
     
-    names = IFC_sorted[:, 0]
-    n_place = IFC_sorted.shape[0]
-    n_placed = 0
-    tries = 0
+    elif marker_dict.get(item) == 12:   #For the floor
+        #Center over marker
+        #approach and pick up part!
+        z_offset = mdl.get_EE_coords()[2] + pickup_offsets["floor"]["z"]
+        translate((pickup_offsets["floor"]["x"], pickup_offsets["floor"]["y"], 0), ACC, VEL)
+        translate((0, 0, z_offset), ACC, VEL)
+        gripper_width(50)
+        gripper_width(20) #adjusted floor
+        time.sleep(2.0)
+        translate((0, 0, -z_offset), ACC, VEL)
+
+    else:
+        pass
+
+def place_element(item, floorpartid, place_coords, marker_dict = MARKER_DICT):
+    elements = item
+    activity= 'place'
+
+    if item != "Foundation":
+        item = item.split("_")[0]
+
+    with construction_status.state_lock:
+        construction_status.state["current_element"] = elements
+        construction_status.state["current_state"] = activity
+
+    x_move = float(place_coords[0]) / 100
+    y_move = float(place_coords[1]) / 100
+    z_move = mdl.get_EE_coords()[2] + pickup_offsets["foundation"]["z"] - float(place_coords[2]) / 100
+    
+    if marker_dict.get(item) == 11:
+        translate((x_move + x_offset_fund_place, y_move + y_offset_fund_place, 0), ACC, VEL)
+        set_orientation(orientations['ct'], ACC, VEL)
+
+        #Rotates 90 deg. 
+        current_posj = mdl.get_joints()
+        current_posj[5] += pi/2 - 0.005
+        moveJ(current_posj, ACC, VEL)
+
+        translate((0, 0, z_move + z_offset_fund_place), ACC, VEL)
+        gripper_width(100)
+        time.sleep(0.5)
+
+    elif marker_dict.get(item) == 10:
+        translate((x_move + x_offset_wall_place, y_move + y_offset_wall_place, 0), ACC, VEL)
+        set_orientation(orientations['ct'], ACC, VEL)
+        if floorpartid == 3:
+            #Rotates 90 deg.
+            temp_pos =mdl.get_joints()
+            temp_pos[5] = temp_pos[5]+wall_place_rotation_finetune
+            moveJ(temp_pos, ACC, VEL)
+
+            # translate((0, 0, z_move + z_offset_wall_place  ), ACC, VEL) #Moves in z  
+            translate((x_offset_wall_place_finetune_2, y_offset_wall_place_finetune_2, 
+                       z_move + z_offset_wall_place - z_offset_wall_place_finetune_2), ACC, VEL)
+        else:
+            translate((x_offset_wall_place_finetune_1, y_offset_wall_place_finetune_1, 
+                       z_move + z_offset_wall_place - z_offset_wall_place_finetune_1  ), ACC, VEL) #Moves in z        
+            translate((0,0,0.004), ACC, VEL)
+            translate((0,0,0.004), ACC, VEL)
+
+        gripper_width(100)
+        time.sleep(0.5)
+
+    elif marker_dict.get(item) == 12:   #For the floor                
+        translate(( x_move + x_offset_floor_place,  y_move + y_offset_floor_place, 0), ACC, VEL)
+        set_orientation(orientations['ct'],ACC, VEL)                  
+
+        if floorpartid == 2:
+            temp_pos =mdl.get_joints()
+            temp_pos[5] = temp_pos[5] + floor_place_rotation_1
+            moveJ(temp_pos, ACC, VEL)
+    
+            translate((x_offset_floor_place_finetune_1, y_offset_floor_place_finetune_1,
+                       z_offset_wall_place_finetune_1), ACC, VEL)      
+
+            translate((0, 0, z_move + z_offset_floor_place), ACC, VEL)     
+            
+        elif floorpartid == 4:
+            temp_pos =mdl.get_joints()
+            temp_pos[5] = temp_pos[5] + floor_place_rotation_2
+            moveJ(temp_pos, ACC, VEL)  
+
+            print('second floor')
+
+            # translate((0, 0, z_offset_floor_place_finetune_2), ACC, VEL)
+
+            translate((x_offset_floor_place_finetune_2, y_offset_floor_place_finetune_2,
+                        z_offset_floor_place + z_move + z_offset_floor_place_finetune_2), ACC, VEL)
+                    
+        gripper_width(100)
+        time.sleep(0.5)
+
+    else:
+        pass
+    
+    placed_pos = {
+        "coords": mdl.get_EE_coords(),
+        "orientation": mdl.get_orientation()
+    }
+    
+    translate((0, 0, -0.05), ACC, VEL)  #Moves a bit up
+
+    return placed_pos
+
+def perform_construction(IFC_sorted, frame_handler, n_placed, use_stub=False, marker_dict=MARKER_DICT):
+    """
+    Performs construction based on the sorted IFC data.
+    
+    The IFC_sorted data is assumed to be an array (or list of lists) where each row
+    is [item_name, x, y, z]. For example, the logical ordering is:
+       Foundation, bathroom_module_1, Wall_1, Floor_1, bathroom_module_2, Wall_2, Floor_2, bathroom_module_3
+       
+    The routine:
+      1. Scans the environment to get pickup (pu_pos), construction (ct_pos), and storage (st_pos) positions.
+      2. Iterates through the ordered list:
+           - For a standard item (not beginning with "bathroom_module"):
+                 • Update state to "search" and call search_element.
+                 • Swing to pickup (using pu_pos) then call pick_element.
+                 • Swing to construction site (ct_pos).
+                 • Set placement coordinates from the current IFC_sorted row (using ifc_index) and call place_element.
+                 • Swing back (using pu_pos or st_pos depending on the next item).
+                 • Record the placed position and increment ifc_index.
+           - For an item that starts with "bathroom_module":
+                 • Use the placement coordinate from the previous row (if available) and call routine_for_bathroom.
+                 • Record the current end-effector position.
+      3. Updates its state at each step.
+      
+    Returns:
+       A tuple: (item_list, block_list, placed_positions)
+         - item_list: list of processed item names.
+         - block_list: any extra data returned from toilet routines (if applicable).
+         - placed_positions: list of positions (dicts with 'coords' and 'orientation')
+    """   
+    # ----- Build ordered list from IFC_sorted -----
+    raw_items = []
+    bathroom_count = 1
+    for row in IFC_sorted:
+        # Extract the item name; assuming format "something: item - something"
+        item = row[0].split(":")[1].split("-")[0].strip()
+        raw_items.append(item)
+        # For every "Foundation" or "Floor", insert an extra "bathroom_module" entry.
+        if item in ["Foundation", "Floor"]:
+            bathroom_count += 1
+            raw_items.append(f"bathroom_module_{bathroom_count}")
+    
+    # Optionally, if you need numbering for duplicates.
+    occ = Counter(raw_items)
+    cnt = defaultdict(int)
+    ordered_items = []
+    for itm in raw_items:
+        if occ[itm] > 1:
+            cnt[itm] += 1
+            ordered_items.append(f"{itm}_{cnt[itm]}")
+        else:
+            ordered_items.append(itm)
+    
+    # ----- Initialize result lists and indices -----
+    item_list = []         # List of items processed.
+    block_list = []        # For extra data (e.g. toilet block information).
+    placed_positions = []  # To store the end-effector positions after placement.
+    
+    # 'ifc_index' will track how many IFC_sorted rows have been consumed for placement coordinates.
+    ifc_index = 0
+    # n_placed = 0 # 'n_placed' counts the overall items from the ordered_items list.
+    bathroom_idx = 1 #'bathroom_idx' keeps the current count of the bathroom modules
+
+    # ----- Scan the environment -----
+    # Update state.
+    with construction_status.state_lock:
+        construction_status.state["current_element"] = "scanning_site"
+        construction_status.state["current_state"] = "-"
+    pu_pos, ct_pos, st_pos = scan_site(frame_handler, use_stub=use_stub)
+    # The starting position for search is taken as pu_pos (pickup)
     start_pos = pu_pos
     moveJ(start_pos, ACC, VEL)
-    
-    while n_placed < n_place:
-        start_time = datetime.now()
 
-        moveJ(start_pos, ACC, VEL)
+    # ----- Process each item in the ordered list -----
+    while n_placed < len(ordered_items):
+        current_item = ordered_items[n_placed]
+                
+        # Branch if this is a bathroom module entry.
+        if current_item.startswith("bathroom_module"):
+            # Use the placement coordinate from the previous IFC row.
+            if ifc_index == 0:
+                # If no previous row exists, default to a safe coordinate (or raise error)
+                place_coords = [0, 0, 0]
+            else:
+                place_coords = IFC_sorted[ifc_index - 1][1:4]
+            print("Initiating bathroom routine for associated element.")
+            # Call the dedicated bathroom routine.
+            from .bathroom import routine_for_bathroom #Do this to avoid circular imports.
+            grab_pos,placed_pos = routine_for_bathroom(frame_handler,
+                                    bathroom_idx,
+                                    place_pos_bathroom=ct_pos,    # use construction position
+                                    pickup_pos_element=pu_pos,     # use pickup position
+                                    _IFC_sorted=IFC_sorted,
+                                    n_placed=ifc_index - 1)
+            block_list.append(grab_pos)
+            bathroom_idx += 1
 
-        item = names[n_placed].split(":")[1].split("-")[0].strip()
-
-        print(f"Searching for {item}")
-        task = "Placing " + item
-
-        # elements = 'Searching element'
-        # activity= 'grab'
-        # with construction_status.state_lock:
-        #             construction_status.state["current_element"] = elements
-        #             construction_status.state["current_state"] = activity
-        
-        img = frame_handler.get_latest_frame()
-        _, ids = MarkerDetector.find_objects(img)
-  
-        if (ids is not None and marker_dict.get(item) in ids):
-            img = frame_handler.get_latest_frame()
-            _, ids = MarkerDetector.find_objects(img)
-            print("The item is here:")
-
-            elements = item
-            activity= 'grab'
-
-            with construction_status.state_lock:
-                construction_status.state["current_element"] = elements
-                construction_status.state["current_state"] = activity
-
-            # Grab function
-            grab(start_pos, marker_dict.get(item), frame_handler)
-            print("I have now grabbed it!")
-
-            # Now for the placement functions
-            place_coords = IFC_sorted[n_placed, 1:4]
-
-            activity= 'place'
-
-            with construction_status.state_lock:
-                construction_status.state["current_state"] = activity
-
-            # Place function
-            print("We are now placing:")
-            pos_placed = place(ct_pos, place_coords, marker_dict.get(item),n_placed)
-            item_list.append(item)
-            placed_positions.append(pos_placed)
-
-            end_time = datetime.now()
-            new_row = {'task': task, 'start date': start_time, 'end date': end_time}
-            new_row_df = pd.DataFrame([new_row])
-            df = pd.concat([df, new_row_df], ignore_index=True)
-
-            # Toilet placements
-            if item.strip() == "Floor" or item.strip() == "Foundation":
-                elements = 'Toilet'
-                activity= 'grab'
-
-                with construction_status.state_lock:
-                    construction_status.state["current_element"] = elements
-                    construction_status.state["current_state"] = activity
-
-                start_time = datetime.now()
-                task = "Placing toilet"
-                print("We should now place a colored toilet!")
-                toilet_found = False
-
-                # Move to storage zone
-                moveJ(st_pos,ACC, VEL)
-
-                # Find and grab block of specified color
-                red_found, blue_found = check_frame(bathroom_module_color_thresholds, bathroom_module_area_thresholds, frame_handler)
-                print("Red found=", red_found)
-                print("Blue found=", blue_found)
-
-                # Ask what color toilet to place
-                answer = None
-                try:
-                    answer = func_timeout(5, lambda: input('Input color of toilet you want placed [r/b]:\n'))
-                    print(answer)
-                except FunctionTimedOut:
-                    print("Too slow, I will just pick a color for you!")
-                    answer = None
-
-                if answer is None:
-                    print("Too slow, I will just pick a color for you!")
-                    if red_found:
-                        toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["red"]["LB"], 
-                                  bathroom_module_color_thresholds["red"]["UB"], 
-                                  frame_handler)
-                        toilet_found = True
-                    elif blue_found:
-                        toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["blue"]["LB"], 
-                                  bathroom_module_color_thresholds["blue"]["UB"], 
-                                  frame_handler)
-                        toilet_found = True
-                elif answer == "r" and red_found:
-                    toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["red"]["LB"], 
-                                  bathroom_module_color_thresholds["red"]["UB"], 
-                                  frame_handler)
-                    toilet_found = True
-                elif answer == "b" and blue_found:
-                    toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["blue"]["LB"], 
-                                  bathroom_module_color_thresholds["blue"]["UB"], 
-                                  frame_handler)
-                    toilet_found = True
-
-                if toilet_found:
-                    block_list.append(toilet_pos_grab)
-
-                    activity= 'place'
-
-                    with construction_status.state_lock:
-                        construction_status.state["current_state"] = activity
-
-                    # Place toilet
-                    time.sleep(0.5)
-                    moveJ(ct_pos,ACC, VEL)
-                    time.sleep(0.5)
-                    print("n_placed is:", n_placed)
-                    toilet_pos = place_toilet(IFC_sorted, n_placed)
-
-                    placed_positions.append(toilet_pos)
-                    print("Toilet is now placed!")
-                    item_list.append("Toilet")
-                else:
-                    print("Could not find the correct toilet, moving on...")
-
-                end_time = datetime.now()
-                new_row = {'task': task, 'start date': start_time, 'end date': end_time}
-                new_row_df = pd.DataFrame([new_row])
-                df = pd.concat([df, new_row_df], ignore_index=True)
-
-            # After successful placement
-            print("Now placed all good!")
-            n_placed += 1
-            tries = 0
+            # For swing-back, choose pu_pos.
+            swing_target = pu_pos
+            
         else:
-            elements = 'Searching element'
-            activity= 'grab'
-            print("We can't see the item!")
+            # Standard item – follow the sequence.
+            # 1. Search: dict = marker_dict)
+            
+            # 2. Pick the item.
+            pick_element(current_item, marker_dict = marker_dict)
+            
+            # 3. Swing to the construction (placement) site.
+            swing(ct_pos, current_item, "swing")
+            
+            # 4. Set placement coordinates from the .IFC and place the item 
+            if ifc_index < len(IFC_sorted):
+                # Extract coordinates from the current row.
+                place_coords = IFC_sorted[ifc_index][1:4]
+            else:
+                # If we run out of rows, use ct_pos or a safe default.
+                place_coords = [0, 0, 0]
+   
+            placed_pos = place_element(current_item, ifc_index, place_coords, marker_dict = marker_dict)
 
-            with construction_status.state_lock:
-                construction_status.state["current_element"] = elements
-                construction_status.state["current_state"] = activity
+            item_list.append(current_item)
+            ifc_index += 1  # Increment the IFC coordinate index (only for standard items).
+            
+            # Here we choose st_pos if the next item (if any) starts with "bathroom_module"; otherwise, return to pu_pos.
+            if n_placed + 1 < len(ordered_items) and ordered_items[n_placed + 1].startswith("bathroom_module"):
+                swing_target = st_pos
+            else:
+                swing_target = pu_pos
+            swing(swing_target, current_item, "swing_back")
+        
+     
+        placed_positions.append(placed_pos)
+  
+        time.sleep(0.5)
+        update_continue(n_placed)
+        n_placed += 1
+    
+    print("Construction process completed!")
+    return item_list, block_list, placed_positions
 
-            time.sleep(3)
-            tries += 1
-            if tries > 5:
-                    userAssist = None
-                    try:
-                        userAssist = func_timeout(5, lambda: input('Please help me. Should I continue [y/n]:\n'))
-                        print(userAssist)
-                    except FunctionTimedOut:
-                        print("Too slow, I will try again!")
-                        userAssist = 'y'
-                        if userAssist == 'y':
-                            tries += 1
-                            continue
-                        if userAssist == 'n':
-                            break
 
-    elements = 'Scanning site'
-    activity= 'grab'
+def perform_reconstruction(IFC_sorted, frame_handler, n_placed, _dis_pos = dis_pos, marker_dict=MARKER_DICT):
+    """
+    Performs the reconstruction (reassembly) routine using the sorted IFC data.
+    
+    IFC_sorted is assumed to be an array-like object where each row is:
+         [ "something: item - something", x, y, z ]
+    For example, the logical ordering might be:
+         Foundation, bathroom_module_1, Wall_1, Floor_1, bathroom_module_2, Wall_2, Floor_2, bathroom_module_3
+         
+    In reconstruction:
+      - The start (pickup) position is taken from the disassembly position (dis_pos).
+      - The construction (placement) and storage positions are obtained by scanning the site (with use_stub=True).
+      
+    The routine processes the ordered items as follows:
+      (A) If the item's base name is "Foundation":  
+          • Skip normal processing (i.e. do NOT perform search–pick–place)  
+          • Print a message that Foundation is skipped so that the following bathroom_module_1 will be used.
+          
+      (B) If the ordered item starts with "bathroom_module":  
+          • Use the placement coordinates from the previous IFC row (if available)  
+          • Call routine_for_bathroom(...) to handle the toilet placement  
+          • Record the returned end-effector position.
+          
+      (C) Otherwise, for standard items (e.g. Wall or Floor):  
+          1. Update state to "search" and call search_element(current_item, frame_handler, marker_dict).
+          2. Swing from disassembly (start_pos) to the pick area.
+          3. Update state to "pick" and call pick_element(current_item, marker_dict).
+          4. Swing to the construction (placement) site.
+          5. Set placement coordinates from the current IFC_sorted row (using ifc_index) and call place_element(current_item, ifc_index, place_coords, marker_dict).
+          6. Determine a safe swing-back target (storage if the next item is a bathroom module, else disassembly) and swing back.
+          7. Record the placed position and increment ifc_index.
+          
+    The function updates its state at each step.
+    
+    Returns:
+       A tuple: (item_list, block_list, placed_positions)
+         - item_list: list of processed item names (excluding skipped Foundation).
+         - block_list: any extra data from toilet routines (if applicable).
+         - placed_positions: list of positions (each a dict with 'coords' and 'orientation').
+    """
+
+    # ----- Step 1. Build the Ordered List from IFC_sorted -----
+    raw_items = []
+    bathroom_count = 1
+    for row in IFC_sorted:
+        # Extract the item name; assuming format "something: item - something"
+        item = row[0].split(":")[1].split("-")[0].strip()
+        raw_items.append(item)
+        # For every "Foundation" or "Floor", insert an extra "bathroom_module" entry.
+        if item in ["Foundation", "Floor"]:
+            bathroom_count += 1
+            raw_items.append(f"bathroom_module_{bathroom_count}")
+    
+    # Create a numbered ordered list (if duplicates exist)
+    occ = Counter(raw_items)
+    cnt = defaultdict(int)
+    ordered_items = []
+    for itm in raw_items:
+        if occ[itm] > 1:
+            cnt[itm] += 1
+            ordered_items.append(f"{itm}_{cnt[itm]}")
+        else:
+            ordered_items.append(itm)
+    
+  
+    item_list = []         # Will contain the names of standard items processed.
+    block_list = []        # For any extra toilet/block data.
+    placed_positions = []  # To record the end-effector position after each placement.
+    
+    # ifc_index tracks which row in IFC_sorted has been used for placement coordinates.
+    ifc_index = 0
+    # n_placed = 0 # n_placed is the counter for overall items in the ordered_items list.
+    bathroom_idx = 1 #'bathroom_idx' keeps the current count of the bathroom modules
 
     with construction_status.state_lock:
-        construction_status.state["current_element"] = elements
-        construction_status.state["current_state"] = activity
-
-    start_time = datetime.now()
-    # Move to camera position 1
-    moveJ(camera_pos1,ACC, VEL)
-    time.sleep(1)
-
-    # # Take image
-    # img = frame_handler.get_latest_frame()
-    # img_name1 = item + str(n_placed) + "view1" + ".jpg"
-    # cv2.imwrite(img_name1, img)
-
-    # Move back
-    moveJ(ct_pos,ACC, VEL)
-    time.sleep(2)
-
-    end_time = datetime.now()
-    new_row = {'task': task, 'start date': start_time, 'end date': end_time}
-    new_row_df = pd.DataFrame([new_row])
-    df = pd.concat([df, new_row_df], ignore_index=True)
-
-    if tries < 5:
-        print("Placement done!")
-
-    return item_list, block_list, placed_positions, df
-
-#Reconstruction routine
-def perform_reconstruction(IFC_sorted, marker_dict, frame_handler):
-    
-    item_list = []
-    block_list = []
-    placed_positions = []
-    df = pd.DataFrame({'task': [], 'start date': [], 'end date': []})
-    
-    start_time = datetime.now()
-
-    # elements = 'Scanning site'
-    # activity= 'grab'
-
-    # with construction_status.state_lock:
-    #     construction_status.state["current_element"] = elements
-    #     construction_status.state["current_state"] = activity
+            construction_status.state["current_element"] = "scanning_site"
+            construction_status.state["current_state"] = "-"
 
     _, ct_pos, st_pos = scan_site(frame_handler, use_stub=True)
+   
+    # start_pos = dis_pos  
+    moveJ(_dis_pos, ACC, VEL)
+    _dis_pos = find_part(MARKER_DICT["deconstruction"], frame_handler)
 
-    end_time = datetime.now()
-    df.loc[len(df)] = {"task": "Initializing", "start date": start_time, "end date": end_time}
+    translate((-0.07, 0.045, 0), ACC, VEL) # fine-tuning for better view.
+    start_pos = mdl.get_joints()
+
+    moveJ(st_pos, ACC, VEL)
     
-    names = IFC_sorted[:, 0]
-    n_place = IFC_sorted.shape[0]
-    n_placed = 0
-    tries = 0
-    start_pos = dis_pos
-    moveJ(start_pos, ACC, VEL)
-    
-    while n_placed < n_place:
-        start_time = datetime.now()
+    while n_placed < len(ordered_items):
+        current_item = ordered_items[n_placed]
 
-        moveJ(start_pos, ACC, VEL)
-        translate((-0.1,0.08,0),ACC,VEL)
+        # If the base item is Foundation, skip normal processing.
+        if current_item == "Foundation":
+            print("Skipping placement for Foundation.")
+            n_placed += 1
+            ifc_index += 1
+            continue
+        
+        # If the item is a bathroom module:
+        if current_item.startswith("bathroom_module"):
+            # Use the placement coordinate from the previous IFC row.
+            if ifc_index == 0:
+                place_coords = [0, 0, 0]
+            else:
+                place_coords = IFC_sorted[ifc_index - 1][1:4]
+            print("Initiating bathroom routine for associated element.")
+            from .bathroom import routine_for_bathroom  # local import to avoid circular imports
+            grab_pos, placed_pos = routine_for_bathroom(frame_handler,
+                                    bathroom_idx,
+                                    place_pos_bathroom=ct_pos,    # use construction site position
+                                    pickup_pos_element=start_pos, # use disassembly (pickup) position
+                                    _IFC_sorted=IFC_sorted,
+                                    n_placed=ifc_index - 1)
+            block_list.append(grab_pos)
+            bathroom_idx += 1
 
-        item = names[n_placed].split(":")[1].split("-")[0].strip()
-        print(item)
-
-        print(f"Searching for {item}")
-        task = "Placing " + item
-
-        # If the item is "Foundation", skip the grab and place routine
-        if item == "Foundation":
-            print("Skipping placement for Foundation but continuing with the toilet routine.")
+            # For swing-back, choose disassembly position.
+            swing_target = start_pos
+            
         else:
-            img = frame_handler.get_latest_frame()
-            _, ids = MarkerDetector.find_objects(img)
+            # Standard item – follow the sequence.
+            # 1. SEARCH:
+            search_element(current_item, frame_handler, marker_dict=marker_dict)
+                        
+            # 2. PICK:
+            pick_element(current_item, marker_dict=marker_dict)
 
-            if ids is not None and marker_dict.get(item) in ids:
-                img = frame_handler.get_latest_frame()
-                _, ids = MarkerDetector.find_objects(img)
-                print("The item is here:")
-
-                elements = item
-                activity = 'grab'
-
-                with construction_status.state_lock:
-                    construction_status.state["current_element"] = elements
-                    construction_status.state["current_state"] = activity
-
-                # Grab function
-                grab(start_pos, marker_dict.get(item), frame_handler)
-                print("I have now grabbed it!")
-
-                # Now for the placement functions
-                place_coords = IFC_sorted[n_placed, 1:4]
-
-                activity = 'place'
-
-                with construction_status.state_lock:
-                    construction_status.state["current_state"] = activity
-
-                # Place function
-                print("We are now placing:")
-                pos_placed = place(ct_pos, place_coords, marker_dict.get(item), n_placed)
-                item_list.append(item)
-                placed_positions.append(pos_placed)
-
+            # 3. SWING: swing from disassembly to pick area.
+            swing(ct_pos, current_item, "swing")
+            
+            # 4. Set placement coordinates from the .IFC and place the item 
+            if ifc_index < len(IFC_sorted):
+                place_coords = IFC_sorted[ifc_index][1:4]
             else:
-                elements = 'Searching element'
-                activity = 'grab'
-                print("We can't see the item!")
+                place_coords = [0, 0, 0]
 
-                with construction_status.state_lock:
-                    construction_status.state["current_element"] = elements
-                    construction_status.state["current_state"] = activity
-
-                time.sleep(3)
-                tries += 1
-                if tries > 5:
-                    userAssist = None
-                    try:
-                        userAssist = func_timeout(5, lambda: input('Please help me. Should I continue [y/n]:\n'))
-                        print(userAssist)
-                    except FunctionTimedOut:
-                        print("Too slow, I will try again!")
-                        userAssist = 'y'
-                    
-                    if userAssist == 'y':
-                        tries += 1
-                        continue
-                    if userAssist == 'n':
-                        break
-
-        # **Toilet Routine Runs Even If Item is Foundation**
-        if item.strip() == "Floor" or item.strip() == "Foundation":
-            elements = 'Toilet'
-            activity = 'grab'
-
-            with construction_status.state_lock:
-                construction_status.state["current_element"] = elements
-                construction_status.state["current_state"] = activity
-
-            start_time = datetime.now()
-            task = "Placing toilet"
-            print("We should now place a colored toilet!")
-            toilet_found = False
-
-            # Move to storage zone
-            moveJ(st_pos, ACC, VEL)
-
-            # Find and grab block of specified color
-            red_found, blue_found = check_frame(bathroom_module_color_thresholds, bathroom_module_area_thresholds, frame_handler)
-            print("Red found=", red_found)
-            print("Blue found=", blue_found)
-
-            # Ask what color toilet to place
-            answer = None
-            try:
-                answer = func_timeout(5, lambda: input('Input color of toilet you want placed [r/b]:\n'))
-                print(answer)
-            except FunctionTimedOut:
-                print("Too slow, I will just pick a color for you!")
-                answer = None
-
-            if answer is None:
-                print("Too slow, I will just pick a color for you!")
-                if red_found:
-                    toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["red"]["LB"], 
-                              bathroom_module_color_thresholds["red"]["UB"], 
-                              frame_handler)
-                    toilet_found = True
-                elif blue_found:
-                    toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["blue"]["LB"], 
-                              bathroom_module_color_thresholds["blue"]["UB"], 
-                              frame_handler)
-                    toilet_found = True
-            elif answer == "r" and red_found:
-                toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["red"]["LB"], 
-                              bathroom_module_color_thresholds["red"]["UB"], 
-                              frame_handler)
-                toilet_found = True
-            elif answer == "b" and blue_found:
-                toilet_pos_grab = grab_toilet(bathroom_module_color_thresholds["blue"]["LB"], 
-                              bathroom_module_color_thresholds["blue"]["UB"], 
-                              frame_handler)
-                toilet_found = True
-
-            if toilet_found:
-                block_list.append(toilet_pos_grab)
-
-                activity = 'place'
-
-                with construction_status.state_lock:
-                    construction_status.state["current_state"] = activity
-
-                # Place toilet
-                time.sleep(0.5)
-                moveJ(ct_pos, ACC, VEL)
-                time.sleep(0.5)
-                print("n_placed is:", n_placed)
-                toilet_pos = place_toilet(IFC_sorted, n_placed)
-
-                placed_positions.append(toilet_pos)
-                print("Toilet is now placed!")
-                item_list.append("Toilet")
+            placed_pos = place_element(current_item, ifc_index, place_coords, marker_dict=marker_dict)
+            item_list.append(current_item)
+            ifc_index += 1  # Increment the IFC coordinate index (only for standard items).
+            
+            if n_placed + 1 < len(ordered_items) and ordered_items[n_placed + 1].startswith("bathroom_module"):
+                swing_target = st_pos
             else:
-                print("Could not find the correct toilet, moving on...")
-
-            end_time = datetime.now()
-            new_row = {'task': task, 'start date': start_time, 'end date': end_time}
-            new_row_df = pd.DataFrame([new_row])
-            df = pd.concat([df, new_row_df], ignore_index=True)
-
-        # After successful placement or skipping foundation
-        print("Now placed all good!")
+                swing_target = start_pos
+            swing(swing_target, current_item, "swing_back")
+        
+        # Record the placed position.
+        placed_positions.append(placed_pos)
+        time.sleep(0.5)
+        update_continue(n_placed)
         n_placed += 1
-        tries = 0
+            
+    print("Reconstruction process completed!")
+    return item_list, block_list, placed_positions
 
-    elements = 'Scanning site'
-    activity = 'grab'
+def test_function():
+    pass
 
-    with construction_status.state_lock:
-        construction_status.state["current_element"] = elements
-        construction_status.state["current_state"] = activity
-
-    start_time = datetime.now()
-    moveJ(dis_pos, ACC, VEL)
-    time.sleep(1)
-    moveJ(ct_pos, ACC, VEL)
-    time.sleep(2)
-
-    end_time = datetime.now()
-    new_row = {'task': task, 'start date': start_time, 'end date': end_time}
-    new_row_df = pd.DataFrame([new_row])
-    df = pd.concat([df, new_row_df], ignore_index=True)
-
-    if tries < 5:
-        print("Placement done!")
-
-    return item_list, block_list, placed_positions, df
-
-
-#Disassembly routine
-def rotation_matrix_to_vector(rotation_matrix):
-            theta = np.arccos((np.trace(rotation_matrix) - 1) / 2)
-            if np.isclose(theta, 0):
-                return np.zeros(3)
-            r = np.array([
-                rotation_matrix[2, 1] - rotation_matrix[1, 2],
-                rotation_matrix[0, 2] - rotation_matrix[2, 0],
-                rotation_matrix[1, 0] - rotation_matrix[0, 1]
-            ]) / (2 * np.sin(theta))
-            return r * theta
-
-def create_maps(item_list, pl_pos, block_list):
-    # Count occurrences for numbering.
-    counts = {"Toilet": 0, "Floor": 0, "Wall": 0, "Foundation": 0}
+def create_indexed_dict(item_list, pl_pos):
+    new_item_list = []
+    bathroom_count = 1
+    # Define the conditions in a tuple for easy extension.
+    conditions = ("foundation", "floor")
     
     for item in item_list:
-        capitalized_item = item.capitalize()  # Ensure consistent capitalization
-        if capitalized_item in counts:
-            counts[capitalized_item] += 1
+        new_item_list.append(item)
+        # Lowercase the item once and check for the conditions.
+        lower_item = item.lower()
+        if any(cond in lower_item for cond in conditions):
+            new_item_list.append(f"bathroom_module_{bathroom_count}")
+            bathroom_count += 1
 
-    # Set counters starting at the total count (highest number first)
-    toilet_counter = counts["Toilet"]
-    floor_counter  = counts["Floor"]
-    wall_counter   = counts["Wall"]
-    
-    pl_mapping = {}     # Mapping for every item using pl_pos
-    toilet_mapping = {} # Additional mapping for toilets using block_list
+    # Validate the lengths.
+    if len(new_item_list) != len(pl_pos):
+        raise ValueError("Length mismatch: new_item_list and pl_pos must be the same length")
 
-    # Create copies to pop from in reverse order.
-    available_pl = pl_pos.copy()
-    available_blocks = block_list.copy()
+    # Use enumerate and zip for a cleaner dictionary comprehension.
+    indexed_dict = {
+        index: {"name": name, "pos": pos}
+        for index, (name, pos) in enumerate(zip(new_item_list, pl_pos))
+    }
+    return indexed_dict
 
-    # Process the item_list in reverse order.
-    for i in range(len(item_list) - 1, -1, -1):
-        item = item_list[i]
-        capitalized_item = item.capitalize()  # Ensure first letter is capitalized
-        # Since pl_pos and item_list are the same length, pop an entry from available_pl.
-        pl_entry = available_pl.pop()
-        
-        if capitalized_item == "Toilet":
-            key = f"Toilet_{toilet_counter}"
-            toilet_counter -= 1
-            pl_mapping[key] = pl_entry
-            # For toilets, also assign an entry from block_list (in reverse order).
-            block_entry = available_blocks.pop() if available_blocks else None
-            toilet_mapping[key] = block_entry
-        elif capitalized_item == "Floor":
-            key = f"Floor_{floor_counter}"
-            floor_counter -= 1
-            pl_mapping[key] = pl_entry
-        elif capitalized_item == "Wall":
-            key = f"Wall_{wall_counter}"
-            wall_counter -= 1
-            pl_mapping[key] = pl_entry
-        elif capitalized_item == "Foundation":
-            # Foundation is unique.
-            key = "Foundation"
-            pl_mapping[key] = pl_entry
-        else:
-            # For any other type, simply use the item name.
-            pl_mapping[item] = pl_entry
+def disassembly(_item_list, _pl_pos,_block_list, _framehandler, _dis_pos = dis_pos):
+    indexed_dict = create_indexed_dict(_item_list, _pl_pos)
+    i = len(_pl_pos)-1
+    bm_idx = 0
+    n_placed = 0 # For non-bathroom_module elements
+    elements = 'scanning_site'
+    activity = '-'
 
-    return pl_mapping, toilet_mapping
-
-def disassembly(_item_list, _pl_pos, _block_list, _framehandler, _ct_pos,_st_pos ,_dis_pos = dis_pos):
-    map1, map2 = create_maps(_item_list, _pl_pos, _block_list)
-    i = 0
-    j = 0
-
-    # map1 = pl_mapping
-    # map2 = toilet_mapping
-
-    elements = 'Scanning site'
-    activity = 'grab'
+    _, _ct_pos, _st_pos = scan_site(_framehandler,True)
 
     with construction_status.state_lock:
         construction_status.state["current_element"] = elements
@@ -730,37 +817,36 @@ def disassembly(_item_list, _pl_pos, _block_list, _framehandler, _ct_pos,_st_pos
     moveJ(_dis_pos, ACC, VEL)
     _dis_pos = find_part(MARKER_DICT["deconstruction"], _framehandler)
 
-    while i < len(_item_list):
-        gripper_width(100)
-        moveJ(_ct_pos, ACC, VEL)
-        keys_list = list(map1.keys())
-        item = keys_list[i]
+    moveJ(_ct_pos, ACC, VEL)
 
-        if item == "Foundation":
-            print('Disassembly completed.')
-            break
-        else:
-            elements = item[:-2]
-            activity = 'grab'
+    while i > -1:
+        item = indexed_dict[i]['name']
+        pickup_position_data = indexed_dict[i]['pos']
+
+        if item != "Foundation":
+            gripper_width(100)
+
+            if i != (len(_pl_pos)-1):
+                swing(_ct_pos, item,"swing_back") # Go to construction site
+
+            elements = item
+            activity = 'pick'
 
             with construction_status.state_lock:
                 construction_status.state["current_element"] = elements
                 construction_status.state["current_state"] = activity
 
-            # Move to the element at the construction site
-            pos = map1[keys_list[i]]['coords'].copy()
-            rotation_vector = rotation_matrix_to_vector(np.array(map1[keys_list[i]]['orientation']))
+            # Go to location in construction site
+            pos = pickup_position_data['coords'].copy()
+            rotation_vector = rotation_matrix_to_vector(np.array(pickup_position_data['orientation']))
             pos.extend(rotation_vector.tolist())
             moveL(pos, ACC, VEL)
             time.sleep(0.75)
 
-            if item[:-2] == "Floor":
+            if item.startswith("Floor"):
                 translate((0, 0, 0.0055), ACC, VEL)
 
-            # if item[:-2] == "Floor":
-            #     translate((0, 0, 0.0035), ACC, VEL)
-
-            # Close gripper to hold object
+            # Close gripper
             for k in range(len(elements_gripper_width[item[:-2]])):
                 if elements_gripper_width[item[:-2]][k] is not None:
                     gripper_width(elements_gripper_width[item[:-2]][k])
@@ -769,24 +855,30 @@ def disassembly(_item_list, _pl_pos, _block_list, _framehandler, _ct_pos,_st_pos
             time.sleep(2.5)
             translate((0, 0, -0.09), ACC, VEL)
 
-            activity = 'place'
-            with construction_status.state_lock:
-                construction_status.state["current_state"] = activity
 
-            if item[:-2] == 'Toilet':
-                # Move to storage zone
-                moveJ(_st_pos,ACC, VEL)
-                pos = map2[keys_list[i]]['coords'].copy()
-                rotation_vector = rotation_matrix_to_vector(np.array(map2[keys_list[i]]['orientation']))
+            if item.startswith("bathroom_module"):
+                swing(_st_pos, item, "swing")  ###
+
+                activity = 'place'
+                with construction_status.state_lock:
+                    construction_status.state["current_state"] = activity
+
+                pos = _block_list[(len(_block_list)-1 -bm_idx)]['coords'].copy()
+                rotation_vector = rotation_matrix_to_vector(np.array(_block_list[(len(_block_list)-1 -bm_idx)]['orientation'])) 
                 pos.extend(rotation_vector.tolist())
                 moveL(pos, ACC, VEL)
+                bm_idx += 1
+                
                 time.sleep(1)
                 gripper_width(100)
                 time.sleep(2)
                 translate((0, 0, -0.06), ACC, VEL)
             else:
-                # Moves to disassembly position
-                moveJ(_dis_pos, ACC, VEL)
+                swing(_dis_pos, item, "swing")
+                
+                activity = 'place'
+                with construction_status.state_lock:
+                    construction_status.state["current_state"] = activity
 
                 if item[:-2] == "Wall":  # Fine-tuning for wall
                     z_extra = 0.015
@@ -795,8 +887,8 @@ def disassembly(_item_list, _pl_pos, _block_list, _framehandler, _ct_pos,_st_pos
                     z_extra = -0.0013
                     z_down = mdl.get_EE_coords()[2] + pickup_offsets["floor"]["z"] + z_extra
 
-                x_move = drops[j][0]
-                y_move = -drops[j][1]
+                x_move = drops[n_placed][0]
+                y_move = -drops[n_placed][1]
 
                 translate((x_move, y_move, 0), ACC, VEL)
                 translate((0, 0, z_down), ACC, VEL)
@@ -804,7 +896,8 @@ def disassembly(_item_list, _pl_pos, _block_list, _framehandler, _ct_pos,_st_pos
                 time.sleep(1)
                 gripper_width(100)
                 time.sleep(2)
-                translate((0, 0, -0.06), ACC, VEL)  # Moves up
-                j += 1
+                translate((0, 0, -0.06), ACC, VEL)
+                n_placed += 1
+            
+        i -=1
 
-        i += 1

@@ -8,6 +8,8 @@ import numpy as np
 from robot_controller.globals import marker_stop_flag, prompt_user_lock
 from robot_controller import globals as rc_globals  # Import the globals module to update the flag
 
+_ENABLE_OBSTACLE_AVOIDANCE = True
+
 class RobotController:
     def __init__(self, host="192.168.1.10", port=30002, debug=True):
         self.host = host
@@ -165,20 +167,14 @@ class RobotController:
             time.sleep(0.05)
         move_thread.join()
 
-        # if marker_stop_flag.is_set():
-        #     with prompt_user_lock:
-        #         marker_stop_flag.clear()
-        #         makerAvoidmovement()
-        #         time.sleep(0.1)
-        #         return False
-
         if marker_stop_flag.is_set():
             with prompt_user_lock:
-                rc_globals.OBSTACLE_MANEUVER = True  # Set the flag before avoidance
-                marker_stop_flag.clear()
-                makerAvoidmovement()
-                time.sleep(0.1)
-                rc_globals.OBSTACLE_MANEUVER = False  # Reset the flag after avoidance
+                if _ENABLE_OBSTACLE_AVOIDANCE:
+                    rc_globals.OBSTACLE_MANEUVER = True  # Set the flag before avoidance
+                    marker_stop_flag.clear()
+                    makerAvoidmovement()
+                    time.sleep(0.1)
+                    rc_globals.OBSTACLE_MANEUVER = False  # Reset the flag after avoidance
                 return False
             
         return True

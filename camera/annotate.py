@@ -1,7 +1,7 @@
-
 #camera/annotate.py
 import cv2
 import numpy as np
+import time
 
 def showFrame(frame, scale=1.5):
     """
@@ -29,127 +29,6 @@ def findArucoMarkers(img, markerSize=6, totalMarkers=250, draw=True):
     detector = cv2.aruco.ArucoDetector(dictionary, parameters)
     markerCorners, markerIds, _ = detector.detectMarkers(img)
     return markerCorners, markerIds
-
-#######################################################################################
-############################# ORIGINAL FUNCTION #######################################
-#######################################################################################
-# def annotateMarker(frame, bboxs, ids):
-#     """
-#     Annotate detected markers by drawing a rectangle and putting text (marker ID).
-    
-#     :param frame: Image frame to annotate.
-#     :param bboxs: List of marker bounding boxes.
-#     :param ids: List of marker IDs.
-#     """
-#     for i in range(len(bboxs)):
-#         marker_corners = bboxs[i][0]
-#         marker_id = ids[i][0]
-        
-#         # Approximate the marker contour
-#         marker_contour = np.array(marker_corners, dtype=np.int32)
-#         epsilon = 0.01 * cv2.arcLength(marker_contour, True)
-#         approx = cv2.approxPolyDP(marker_contour, epsilon, True)
-        
-#         # Draw rectangle around the marker
-#         rect = cv2.minAreaRect(approx)
-#         box = cv2.boxPoints(rect)
-#         box = np.int_(box)
-#         cv2.drawContours(frame, [box], 0, (0, 255, 0), 2)
-        
-#         # Get top-left corner for text (with an offset)
-#         marker_corner_tuple = tuple(marker_corners[0].astype(int))
-#         text_offset = 30 
-#         cv2.putText(frame, str(marker_id), 
-#                     (marker_corner_tuple[0], marker_corner_tuple[1] + text_offset), 
-#                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-
-######################################################################################
-
-# def annotateMarker(frame, bboxs, ids):
-#     """
-#     Annotate detected markers by:
-#       - Shading them with a translucent green overlay,
-#       - Drawing a green border,
-#       - Placing the text so that its top-right corner is at (min_x, min_y) of the marker,
-#       - Drawing a horizontal red line at 70% of the frame height,
-#       - Adding a red tint to the remaining 30% region,
-#       - Resizing the frame by a scale factor (set internally).
-#     """
-#     FONT_SCALE = 1.0  # Internal font scale variable.
-#     alpha = 0.3       # Transparency factor for the green overlay.
-#     redtint = True   # Toggle tinting
-#     tint_alpha = 0.15  # Tint intensity (30% red overlay)
-
-#     # ---- First loop: Shading and borders ----
-#     overlay = frame.copy()
-#     for i in range(len(bboxs)):
-#         marker_corners = bboxs[i][0]
-#         marker_id = ids[i][0]
-
-#         # Approximate the marker contour
-#         marker_contour = np.array(marker_corners, dtype=np.int32)
-#         epsilon = 0.01 * cv2.arcLength(marker_contour, True)
-#         approx = cv2.approxPolyDP(marker_contour, epsilon, True)
-
-#         # Draw filled contour (shaded overlay) on the overlay image
-#         cv2.drawContours(overlay, [approx], 0, (0, 255, 0), -1)
-
-#         # Draw the green border on the original frame for crisp edges
-#         rect = cv2.minAreaRect(approx)
-#         box = cv2.boxPoints(rect)
-#         box = np.int_(box)
-#         cv2.drawContours(frame, [box], 0, (0, 255, 0), 2)
-
-#     # Blend the overlay with the original frame for translucent shading
-#     cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
-
-#     # ---- Second loop: Draw marker ID text ----
-#     for i in range(len(bboxs)):
-#         marker_corners = bboxs[i][0]
-#         marker_id = ids[i][0]
-#         text = str(marker_id)
-
-#         # Find anchor: top-right is defined as the minimum x and minimum y among the corners
-#         xs = marker_corners[:, 0]
-#         ys = marker_corners[:, 1]
-#         anchor_x = int(np.min(xs))
-#         anchor_y = int(np.min(ys))
-
-#         # Compute text size and baseline
-#         font = cv2.FONT_HERSHEY_SIMPLEX
-#         thickness = 2
-#         (text_width, text_height), baseline = cv2.getTextSize(text, font, FONT_SCALE, thickness)
-
-#         # Place text so its top-right corner is at (anchor_x, anchor_y)
-#         text_x = anchor_x - text_width  # text extends to the left
-#         text_y = anchor_y + text_height  # text extends downward
-
-#         # Clamp if necessary so text doesn't go off-frame
-#         if text_x < 0:
-#             text_x = 0
-#         if text_y > frame.shape[0]:
-#             text_y = frame.shape[0]
-
-#         cv2.putText(frame, text, (text_x, text_y),
-#                     font, FONT_SCALE, (255, 255, 255), thickness, cv2.LINE_AA)
-
-#     # ---- Draw red danger zone ----
-#     height, width = frame.shape[:2]
-#     line_y = int(height * 0.7)
-#     cv2.line(frame, (0, line_y), (width, line_y), (0, 0, 255), 2)
-
-#     # Add a red tint to the remaining 30% region (from line_y to bottom)
-#     if redtint:
-#         red_color = (0, 0, 255)  # Red in BGR
-#         # Create an overlay for the bottom region
-#         bottom_region = frame[line_y:height, :]
-#         red_overlay = bottom_region.copy()
-#         red_overlay[:] = red_color
-#         # Blend the red overlay with the bottom region
-#         tinted_region = cv2.addWeighted(red_overlay, tint_alpha, bottom_region, 1 - tint_alpha, 0)
-#         frame[line_y:height, :] = tinted_region
-    
-#     return frame
 
 def annotateMarkersBasic(frame, bboxs, ids):
     """
@@ -253,3 +132,37 @@ def liveFeedAruco(frame_handler):
             frame_handler.stopped = True
             break
     cv2.destroyAllWindows()
+
+
+
+def transmitFeed(frame_handler):
+    """
+    Annotate each frame and let FrameHandler send it over WebSocket.
+    No local imshow or waitKey calls here.
+    """
+    
+    while not frame_handler.stopped:
+        frame = frame_handler.get_latest_frame()
+        if frame is not None:
+            # Make a copy so we don't modify the original in place
+            frame_copy = frame.copy()
+
+            # 1) Danger zone annotation
+            annotateDangerZone(frame_copy, True)  # e.g. red tint on bottom 30%
+
+            # 2) ArUco detection + annotation
+            bboxs, ids = findArucoMarkers(frame_copy)
+            if ids is not None and ids.any():
+                annotateMarkersBasic(frame_copy, bboxs, ids)
+
+            # Now store the annotated frame back so the publisher sends it
+            # We'll lock and replace frame_handler.frame with our annotated version
+            with frame_handler.lock:
+                frame_handler.frame = frame_copy
+
+        # Sleep a bit so we don't slam the CPU
+        time.sleep(0.005)
+    
+    # Optionally do any cleanup here
+    print("[transmitFeed] Stopped.")
+

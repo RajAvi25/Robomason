@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 from .canvases import Plot3DCanvas, Plot2DCanvas
-from .config import ELEMENT_COLORS, line_styles, line_widths, line_alpha, worker_colors, x_limits, y_limits, z_limits, z_level, RDP_TRIGGER_COUNT, RDP_TOLERANCE
+from .config import ELEMENT_COLORS, line_styles, line_widths, line_alpha, worker_colors, x_limits, y_limits, z_limits, z_level, RDP_TRIGGER_COUNT, RDP_TOLERANCE, display_robot
 from .helpers import rdp_3d, show_robot_3d, show_robot_2d
 
 class MainWindow(QMainWindow):
@@ -109,6 +109,7 @@ class MainWindow(QMainWindow):
     def resolve_element_name(self, raw_element):
         """Resolves a raw element string to a specific element name."""
         if raw_element is None or raw_element.strip() == "":
+            print("resolve_element_name: Received an empty element.")
             return "default"
         raw_element = raw_element.lower().strip()
         mapping = {
@@ -122,16 +123,24 @@ class MainWindow(QMainWindow):
         for key, label in mapping.items():
             if key in raw_element:
                 if key in ["scanning site", "searching element", "foundation"]:
+                    print(f"resolve_element_name: '{raw_element}' matched '{key}', returning '{label}'")
                     return label
                 if key == "wall":
                     self.wall_count = min(self.wall_count + 1, 2)
+                    resolved = f"{label} {self.wall_count}"
+                    print(f"resolve_element_name: '{raw_element}' matched 'wall', returning '{resolved}'")
                     return f"{label} {self.wall_count}"
                 if key == "floor":
                     self.floor_count = min(self.floor_count + 1, 2)
+                    resolved = f"{label} {self.floor_count}"
+                    print(f"resolve_element_name: '{raw_element}' matched 'floor', returning '{resolved}'")
                     return f"{label} {self.floor_count}"
                 if key == "toilet":
                     self.toilet_count = min(self.toilet_count + 1, 3)
+                    resolved = f"{label} {self.toilet_count}"
+                    print(f"resolve_element_name: '{raw_element}' matched 'toilet', returning '{resolved}'")
                     return f"{label} {self.toilet_count}"
+        print(f"resolve_element_name: '{raw_element}' did not match any key, returning 'default'")
         return "default"
 
     def create_static_legend(self):
@@ -182,6 +191,7 @@ class MainWindow(QMainWindow):
                 lw=self.segment_width,
                 alpha=self.segment_alpha
             )
+            print("finalize_segment: Created trajectory line with color:", self.current_trajectory_line_3d.get_color())
             self.segment_xs.clear()
             self.segment_ys.clear()
             self.segment_zs.clear()
@@ -227,19 +237,28 @@ class MainWindow(QMainWindow):
         TRANSLATION = np.array([0.02099, 0.34301, -0.30002])
         coords = np.array(data.get("coordinates", [0, 0, 0]), dtype=float) + TRANSLATION
         x, y, z = coords
-        raw_element = data.get("element", "default").strip()
-        new_state = data.get("state", "default").strip()
+        raw_element = data.get("element", "default")
+        raw_element = raw_element.strip() if raw_element is not None else "default"
+        new_state = data.get("state", "default")
+     
+        print("process_data: raw_element =", raw_element)
+        print("process_data: new_state =", new_state)
 
         resolved_element = self.resolve_element_name(raw_element)
+        print("process_data: resolved_element =", resolved_element)
         if self.previous_element is not None and (resolved_element != self.previous_element or new_state != self.previous_state):
+            print("process_data: Element or state changed. Finalizing segment...")
             self.finalize_segment()
 
         self.current_element = resolved_element
         self.current_state = new_state
         self.segment_color = self.element_colors.get(self.current_element, "black")
+        print(f"process_data: Using element '{self.current_element}' with color '{self.segment_color}'")
         self.segment_style = line_styles.get(self.current_state, "-")
         self.segment_width = line_widths.get(self.current_state, 1.5)
         self.segment_alpha = line_alpha.get(self.current_state, 1.0)
+        print(f"process_data: Using element '{self.current_element}' with color '{self.segment_color}', style '{self.segment_style}', width {self.segment_width}, alpha {self.segment_alpha}")
+        
 
         # Append to segment buffers
         self.segment_xs.append(x)
@@ -258,6 +277,7 @@ class MainWindow(QMainWindow):
         # Update lines
         self.current_trajectory_line_3d.set_data(self.segment_xs, self.segment_ys)
         self.current_trajectory_line_3d.set_3d_properties(self.segment_zs)
+        print("process_data: current trajectory line (3D) color is", self.current_trajectory_line_3d.get_color())
         self.current_trajectory_line_ortho.set_data(self.ortho_segment_xs, self.ortho_segment_ys)
         self.current_trajectory_line_ortho.set_3d_properties(self.ortho_segment_zs)
         self.current_trajectory_line_top.set_xdata(self.top_segment_xs)

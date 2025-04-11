@@ -84,3 +84,49 @@ def find_part(id_find, frame_handler):
             time.sleep(1)
     _ = find_mark(id_find, frame_handler)
     return mdl.get_joints()
+
+def align_with_random_part(id_find, length_mark,_frame_handler):
+    """
+    Find and orient the part relative to the marker.
+    Returns the final joint positions after centering.
+    """
+    def find_mark_random(id_find, length_mark, _frame_handler):
+        """
+        Moves the gripper so that the marker's corner is centered.
+        Returns the robot's joint pose.
+        """
+        dist = 200
+        while dist > 0.2:
+            img = _frame_handler.get_latest_frame()
+            mark_pos, mark_ang, length, bboxs, ids = mark_pos_ang(img, id_find)
+            # length_mark = SITE_MARKER_SIZE if id_find in SITE_MARKER else ELEMENT_MARKER_SIZE
+            if length:
+                dist = calculate_distance(mark_pos[0], mark_pos[1], frame_length_by_2, frame_height)
+                pix_per_meter = length / length_mark
+                x_move = -(frame_length_by_2 - mark_pos[0]) / pix_per_meter
+                y_move = -(frame_height - mark_pos[1]) / pix_per_meter
+                translate((x_move, y_move, 0), ACC, VEL)
+            else:
+                time.sleep(1)
+        return mdl.get_joints()
+    _ = find_mark_random(id_find, length_mark,_frame_handler)
+    ang = 1
+    while abs(ang) > 0.005:
+        img = _frame_handler.get_latest_frame()
+        _, ang, _, _, _ = mark_pos_ang(img, id_find)
+        if ang:
+            posj = mdl.get_joints()
+            new_joints = posj[:-1] + [posj[-1] - ang]
+            moveJ(new_joints, ACC, VEL)
+            _ = find_mark_random(id_find, length_mark, _frame_handler)
+        elif not isinstance(ang, float):
+            print('Debug: Calculated angle:', ang)
+            twist(3)
+            wiggle(5)
+            _ = find_mark_random(id_find, length_mark, _frame_handler)
+        else:
+            print("Unable to find fiducial marker. Please check the setup.")
+            wiggle(5)
+            time.sleep(1)
+    _ = find_mark_random(id_find, length_mark, _frame_handler)
+    return mdl.get_joints()

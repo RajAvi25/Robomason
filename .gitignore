@@ -1,5 +1,20 @@
 # Ignore large media files
 *.mp4
 *.webm
-*.mp4
-*.webm
+
+# Python
+__pycache__/
+*.pyc
+
+# # Data and Pickles
+# *.pkl
+# *.xlsx
+# *.html
+# *.svg
+
+# # Project-specific
+# _workingdata/
+# DEVELOPMENT/
+
+
+

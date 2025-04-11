@@ -91,6 +91,13 @@ def refresh_tracking_packets():
     with tracking_packets_lock:
         tracking_packets.clear()
 
+def get_current_packet():
+    with tracking_packets_lock:
+        if tracking_packets:
+            return tracking_packets[-1]
+        else:
+            return None
+
 def connectRobotserver():
     context = zmq.Context()
     robot_control_socket = context.socket(zmq.REQ)

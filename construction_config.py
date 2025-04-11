@@ -1,6 +1,66 @@
-# construct/construction_config.py
+# /construction_config.py
 
 import numpy as np
+
+#####################################################################
+################# Plotting related constants ########################
+#####################################################################
+
+ELEMENT_COLORS = {
+    "Scanning site":        "royalblue",
+    "Foundation":           "forestgreen",
+    "Searching element":    "crimson",
+
+    "Wall 1":               "gold",
+    "Wall 2":               "darkgoldenrod",
+
+    "Floor 1":              "indigo",
+    "Floor 2":              "orchid",
+
+    "Bathroom module 1":    "chocolate",
+    "Bathroom module 2":    "sienna",
+    "Bathroom module 3":    "tan",
+}
+
+# In construction_config.py
+
+# Define a base dictionary for states common to both modes.
+BASE_STATE_STYLES = {
+    "pick":       {"linewidth": 2.0, "linestyle": "--"},
+    "swing":      {"linewidth": 2.0, "linestyle": "-."},
+    "place":      {"linewidth": 5.0, "linestyle": "-"},
+    "swing_back": {"linewidth": 5.0, "linestyle": ":"}
+}
+
+#######
+
+# For disassembly, these are exactly the base styles.
+STATE_STYLES_DISASSEMBLY = BASE_STATE_STYLES.copy()
+ALLOWED_STATES_DISASSEMBLY = list(BASE_STATE_STYLES.keys())
+
+# For assembly (or reassembly), add an extra state "search".
+STATE_STYLES_ASSEMBLY = BASE_STATE_STYLES.copy()
+STATE_STYLES_ASSEMBLY["search"] = {"linewidth": 2.0, "linestyle": "-"}
+ALLOWED_STATES_ASSEMBLY = ["search"] + list(BASE_STATE_STYLES.keys())
+
+# For a scanning site (if needed):
+SCANNING_STYLE = {"linewidth": 3.0, "linestyle": "-"}
+
+#######
+
+# We'll use the same line style (solid) for both states, but vary thickness & alpha
+line_styles = {
+    "grab":  "-",  # same line style
+    "place": "-"
+}
+line_widths = {
+    "grab":  5.5,  # thicker line
+    "place": 1.5   # thinner line
+}
+line_alpha = {
+    "grab":  1.0,  # fully opaque
+    "place": 0.7   # slightly transparent
+}
 
 WORKER_COLORS = {
     5: 'cyan',
@@ -17,6 +77,7 @@ WORKER_COLORS = {
     19: 'teal'
 }
 
+
 worker_marker_styles = {
     5: 'x',     
     6: 'x',      
@@ -32,14 +93,17 @@ worker_marker_styles = {
     19: 'x'      
 }
 
-SITE_MARKER = [0,1,2,3]
-ELEMENT_MARKER = [10,11,12,13]
+# # Axes limits
+# z_level = -0.155
+# x_limits = (-0.45, 0.81)
+# y_limits = (-0.35, 0.75)
+# z_limits = (z_level, 0.5)
 
 # Axes limits
 z_level = -0.155
-x_limits = (-0.35, 0.81)
-y_limits = (-0.25, 0.75)
-z_limits = (z_level, 0.49)
+x_limits = (-0.45, 1.05)
+y_limits = (-0.35, 1.15)
+z_limits = (z_level, 0.5)
 
 # Dimensions for environment "boxes"
 b1_dims = (29.5 / 100, 21 / 100)  # pickup site
@@ -57,6 +121,17 @@ box_dims = [b1_dims, b2_dims, b3_dims, b4_dims]
 box_color = 'darkblue'
 box_alpha = 0.5
 
+#####################################################################
+###################### IFC related constants ########################
+#####################################################################
+
+python_executable_IFC = "/home/avi/anaconda3/envs/learningFactory-2/bin/python"
+IFC_function_path = "/home/avi/Desktop/robomason/ifc/IFC_functions.py"  
+
+#####################################################################
+###################### Site related constants #######################
+#####################################################################
+
 MARKER_DICT = {
     "pick_up": 2,
     "storage": 1,
@@ -67,10 +142,14 @@ MARKER_DICT = {
     "Floor": 12
 }
 
+SITE_MARKER = [0,1,2,3]
+ELEMENT_MARKER = [10,11,12,13]
+
 MARKER_SIZE = 0.023
 SITE_MARKER_SIZE = 0.02
 ELEMENT_MARKER_SIZE = 0.01
 WORKER_SQUARE_SIZE = 0.1
+
 
 camera_pos1 = [0.9408252239227295,
  -1.7368041477599085,
@@ -93,8 +172,16 @@ dis_pos = [1.6085065603256226,
  -1.5477584044085901,
  -0.019556824360982716]
 
-python_executable_IFC = "/home/avi/anaconda3/envs/learningFactory-2/bin/python"
-IFC_function_path = "/home/avi/Desktop/robomason/ifc/IFC_functions.py"  
+camera_pos2 = [3.2383928298950195,
+ -1.3273546260646363,
+ 1.273280445729391,
+ -1.5128439155272027,
+ -1.5135439077960413,
+ 0.18120500445365906]
+
+#####################################################################
+################# Construction related constants ####################
+#####################################################################
 
 orientations = {
     "ct":[[-0.06447076, -0.99791238,  0.00379492],
@@ -126,7 +213,7 @@ drops = np.array([[0, d_offset], [dx, d_offset] , [0, d_offset+dy] , [dx, d_offs
 elements_gripper_width = {
     "Wall": (None, 95),
     "Floor": (50, 20),
-    "Toilet": (50, 0)
+    "bathroom_module": (50, 0)
 }
 
 # Dictionary for color thresholds

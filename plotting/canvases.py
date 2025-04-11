@@ -96,5 +96,5 @@ class Plot2DCanvas(FigureCanvas):
         return line2d
 
     def update_robot(self, joint_angles):
-        from helpers import show_robot_2d  # local import to avoid circular dependency
+        from .helpers import show_robot_2d  # local import to avoid circular dependency
         show_robot_2d(self.robot_line_2d, joint_angles, view=self.view)
