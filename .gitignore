@@ -12,9 +12,9 @@ __pycache__/
 # *.html
 # *.svg
 
-# # Project-specific
-# _workingdata/
-# DEVELOPMENT/
+# Project-specific
+_workingdata/
+DEVELOPMENT/
 
 
 
