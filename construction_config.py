@@ -46,21 +46,24 @@ ALLOWED_STATES_ASSEMBLY = ["search"] + list(BASE_STATE_STYLES.keys())
 # For a scanning site (if needed):
 SCANNING_STYLE = {"linewidth": 3.0, "linestyle": "-"}
 
+SITE_COLOR = 'darkblue'
+SITE_ALPHA = 0.5
+
 #######
 
-# We'll use the same line style (solid) for both states, but vary thickness & alpha
-line_styles = {
-    "grab":  "-",  # same line style
-    "place": "-"
-}
-line_widths = {
-    "grab":  5.5,  # thicker line
-    "place": 1.5   # thinner line
-}
-line_alpha = {
-    "grab":  1.0,  # fully opaque
-    "place": 0.7   # slightly transparent
-}
+# # We'll use the same line style (solid) for both states, but vary thickness & alpha
+# line_styles = {
+#     "grab":  "-",  # same line style
+#     "place": "-"
+# }
+# line_widths = {
+#     "grab":  5.5,  # thicker line
+#     "place": 1.5   # thinner line
+# }
+# line_alpha = {
+#     "grab":  1.0,  # fully opaque
+#     "place": 0.7   # slightly transparent
+# }
 
 WORKER_COLORS = {
     5: 'cyan',
@@ -158,12 +161,19 @@ camera_pos1 = [0.9408252239227295,
  -1.5089376608477991,
  -0.58673602739443]
 
-drop_pos = [2.8157572746276855,
- -1.6738444767394007,
- 1.7824528853045862,
- -1.640379091302389,
- -1.5882733503924769,
- -0.3120625654803675]
+# drop_pos = [2.8157572746276855,
+#  -1.6738444767394007,
+#  1.7824528853045862,
+#  -1.640379091302389,
+#  -1.5882733503924769,
+#  -0.3120625654803675]
+
+drop_pos = [2.7558717727661133,
+ -1.478697122340538,
+ 1.5961135069476526,
+ -1.6505519352354945,
+ -1.5904715696917933,
+ -0.3027423063861292]
 
 dis_pos = [1.6085065603256226,
  -1.6148439846434535,

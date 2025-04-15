@@ -1,3 +1,22 @@
+"""
+trajectory_module.py
+
+A module that contains functionality for real-time trajectory visualization,
+including forward kinematics, plotting workers using multiprocessing, and a
+Qt-based GUI.
+ 
+Dependencies:
+    - zmq, msgpack, numpy, multiprocessing, PyQt5, matplotlib
+    - configuration files (construction_config.py and system_config.py) that define
+      constants like TRANSLATION, SITE_COLOR, ELEMENT_COLORS, etc.
+      
+Usage (as a script):
+    python trajectory_module.py
+
+Usage (as a module):
+    from trajectory_module import forward_kinematics, draw_robot, MainWindow, run_app
+"""
+
 import sys
 import zmq
 import msgpack
@@ -14,7 +33,7 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QPixmap, QImage
 
 import matplotlib
-matplotlib.use('Agg')  # Use a backend safe for multiprocessing
+matplotlib.use('Agg')  # Use a non-GUI backend safe for multiprocessing
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -28,9 +47,9 @@ from system_config import *
 # -------------------------
 # CONFIGURATION / GLOBALS
 # -------------------------
-SCALING_FACTOR = 0.75  
+SCALING_FACTOR = 2.0  
 
-# (For plotting in this script we use these axes limits.)
+# Axes limits for plotting.
 z_level = -0.155
 x_limits = (-0.35, 0.81)
 y_limits = (-0.25, 0.75)
@@ -54,6 +73,7 @@ DH_params = [
 ]
 
 def transformation_matrix(a, alpha, d, theta):
+    """Return the transformation matrix for given DH parameters."""
     return np.array([
         [np.cos(theta), -np.sin(theta)*np.cos(alpha),  np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
         [np.sin(theta),  np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
@@ -62,7 +82,10 @@ def transformation_matrix(a, alpha, d, theta):
     ])
 
 def forward_kinematics(joint_angles):
-    """Compute all joint positions in 3D (with a constant translation from config)."""
+    """
+    Compute all joint positions in 3D space given the robot joint angles.
+    A constant translation (TRANSLATION from config) is applied.
+    """
     positions = [np.array([0, 0, DH_params[0]['d']]) + TRANSLATION]
     T = np.eye(4)
     for i, params in enumerate(DH_params):
@@ -73,7 +96,11 @@ def forward_kinematics(joint_angles):
         positions.append(np.array([x, y, z]) + TRANSLATION)
     return positions
 
+# -------------------------
+# PLOTTING HELPERS
+# -------------------------
 def draw_ground(ax, is3d=False):
+    """Draw a ground plane on the given axis."""
     if is3d:
         xx, yy = np.meshgrid(np.linspace(x_limits[0], x_limits[1], 10),
                              np.linspace(y_limits[0], y_limits[1], 10))
@@ -87,6 +114,7 @@ def draw_ground(ax, is3d=False):
         ax.add_patch(rect)
 
 def draw_sites(ax, view='3d'):
+    """Draw predefined site boxes on the axis."""
     site_dims = [
         (29.5/100, 21/100),
         (21/100, 29.5/100),
@@ -117,6 +145,7 @@ def draw_sites(ax, view='3d'):
             ax.add_patch(rect)
 
 def draw_robot(ax, joints, view='3d'):
+    """Draw the robot based on its joint positions in the specified view."""
     joints = np.array(joints)
     if joints.ndim == 1:
         joints = forward_kinematics(joints)
@@ -133,12 +162,16 @@ def draw_robot(ax, joints, view='3d'):
         ax.plot(joints[:,1], joints[:,2], 'ko-', lw=2)
 
 def process_incoming_data(data):
+    """
+    Process incoming data packets to extract coordinates and joint information.
+    A translation (TRANSLATION from config) is added to the coordinates.
+    """
     coords = np.array(data.get("coordinates", [0, 0, 0]), dtype=float) + TRANSLATION
     joints = data.get("joints", None)
     return coords, joints
 
 # -------------------------
-# TRAJECTORY SEGMENTATION FUNCTION
+# TRAJECTORY SEGMENTATION
 # -------------------------
 def normalize_element_name(element):
     """
@@ -214,14 +247,20 @@ def group_trajectory_points(points):
 # PLOTTING WORKER (for multiprocessing)
 # -------------------------
 def plot_view_worker(input_queue, output_queue, view):
+    """
+    Worker process function that receives data from input_queue, updates the plot,
+    and sends the new image bytes through output_queue.
+    """
     fig = Figure(figsize=(4, 3), dpi=100 * SCALING_FACTOR)
+    
+    # Set up the axis based on the view.
     if view == '3d':
         from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
         ax = fig.add_subplot(111, projection='3d')
         ax.set_xlim(x_limits)
         ax.set_ylim(y_limits)
         ax.set_zlim(z_limits)
-        ax.set_xlabel("X [m]" )
+        ax.set_xlabel("X [m]")
         ax.set_ylabel("Y [m]")
         ax.set_zlabel("Z [m]")
         fig.subplots_adjust(top=0.25)
@@ -232,14 +271,14 @@ def plot_view_worker(input_queue, output_queue, view):
         if view == 'top':
             ax.set_xlim(x_limits)
             ax.set_ylim(y_limits)
-            ax.set_xlabel("X [m]" )
+            ax.set_xlabel("X [m]")
             ax.set_ylabel("Y [m]")
             draw_ground(ax, is3d=False)
             draw_sites(ax, view='2d')
         elif view == 'front':
             ax.set_xlim(x_limits)
             ax.set_ylim(z_limits)
-            ax.set_xlabel("X [m]" )
+            ax.set_xlabel("X [m]")
             ax.set_ylabel("Z [m]")
         elif view == 'side':
             ax.set_xlim(y_limits)
@@ -251,6 +290,7 @@ def plot_view_worker(input_queue, output_queue, view):
     robot_joints = None
     spotted_workers = {}
 
+    # Initial plot output.
     canvas = FigureCanvasAgg(fig)
     fig.tight_layout()
     canvas.draw()
@@ -260,6 +300,7 @@ def plot_view_worker(input_queue, output_queue, view):
     output_queue.put(buf.read())
     buf.close()
 
+    # Main update loop.
     while True:
         try:
             data = input_queue.get(timeout=0.1)
@@ -284,12 +325,13 @@ def plot_view_worker(input_queue, output_queue, view):
                     worker_coords = data.get('worker coordinates', [0, 0, 0])
                     spotted_workers[worker_id] = (worker_coords[0], worker_coords[1], z_level + 0.05)
 
+            # Clear and redraw the axis.
             ax.cla()
             if view == '3d':
                 ax.set_xlim(x_limits)
                 ax.set_ylim(y_limits)
                 ax.set_zlim(z_limits)
-                ax.set_xlabel("X [m]" )
+                ax.set_xlabel("X [m]")
                 ax.set_ylabel("Y [m]")
                 ax.set_zlabel("Z [m]")
                 draw_ground(ax, is3d=True)
@@ -298,14 +340,14 @@ def plot_view_worker(input_queue, output_queue, view):
                 if view == 'top':
                     ax.set_xlim(x_limits)
                     ax.set_ylim(y_limits)
-                    ax.set_xlabel("X [m]" )
+                    ax.set_xlabel("X [m]")
                     ax.set_ylabel("Y [m]")
                     draw_ground(ax, is3d=False)
                     draw_sites(ax, view='2d')
                 elif view == 'front':
                     ax.set_xlim(x_limits)
                     ax.set_ylim(z_limits)
-                    ax.set_xlabel("X [m]" )
+                    ax.set_xlabel("X [m]")
                     ax.set_ylabel("Z [m]")
                 elif view == 'side':
                     ax.set_xlim(y_limits)
@@ -327,6 +369,7 @@ def plot_view_worker(input_queue, output_queue, view):
             if robot_joints is not None:
                 draw_robot(ax, robot_joints, view=view)
                 
+            # Draw worker markers.
             if view == '3d':
                 for wid, (wx, wy, wz) in spotted_workers.items():
                     marker = worker_marker_styles.get(wid, 'x')
@@ -352,29 +395,28 @@ def plot_view_worker(input_queue, output_queue, view):
                             ax.add_patch(rect)
                         else:
                             ax.scatter(wx, wy, color=color, marker=marker, s=50)
-
-                #For aesthetic reasons disable workers in front and side views
-                # elif view == 'front':
-                #     for wid, (wx, wy, wz) in spotted_workers.items():
-                #         marker = worker_marker_styles.get(wid, 'x')
-                #         color = WORKER_COLORS.get(wid, 'black')
-                #         if marker == 'zone':
-                #             rect = Rectangle((wx, wz), WORKER_SQUARE_SIZE, WORKER_SQUARE_SIZE,
-                #                              facecolor=color, alpha=0.7, edgecolor=color)
-                #             ax.add_patch(rect)
-                #         else:
-                #             ax.scatter(wx, wz, color=color, marker=marker, s=50)
-                # elif view == 'side':
-                #     for wid, (wx, wy, wz) in spotted_workers.items():
-                #         marker = worker_marker_styles.get(wid, 'x')
-                #         color = WORKER_COLORS.get(wid, 'black')
-                #         if marker == 'zone':
-                #             rect = Rectangle((wy, wz), WORKER_SQUARE_SIZE, WORKER_SQUARE_SIZE,
-                #                              facecolor=color, alpha=0.7, edgecolor=color)
-                #             ax.add_patch(rect)
-                #         else:
-                #             ax.scatter(wy, wz, color=color, marker=marker, s=50)
+                elif view == 'front':
+                    for wid, (wx, wy, wz) in spotted_workers.items():
+                        marker = worker_marker_styles.get(wid, 'x')
+                        color = WORKER_COLORS.get(wid, 'black')
+                        if marker == 'zone':
+                            rect = Rectangle((wx, wz), WORKER_SQUARE_SIZE, WORKER_SQUARE_SIZE,
+                                             facecolor=color, alpha=0.7, edgecolor=color)
+                            ax.add_patch(rect)
+                        else:
+                            ax.scatter(wx, wz, color=color, marker=marker, s=50)
+                elif view == 'side':
+                    for wid, (wx, wy, wz) in spotted_workers.items():
+                        marker = worker_marker_styles.get(wid, 'x')
+                        color = WORKER_COLORS.get(wid, 'black')
+                        if marker == 'zone':
+                            rect = Rectangle((wy, wz), WORKER_SQUARE_SIZE, WORKER_SQUARE_SIZE,
+                                             facecolor=color, alpha=0.7, edgecolor=color)
+                            ax.add_patch(rect)
+                        else:
+                            ax.scatter(wy, wz, color=color, marker=marker, s=50)
             
+            # Render and output new plot.
             canvas = FigureCanvasAgg(fig)
             fig.tight_layout()
             canvas.draw()
@@ -397,10 +439,12 @@ class MainWindow(QMainWindow):
         self.resize(int(1400 * SCALING_FACTOR), int(800 * SCALING_FACTOR))
         self.plot_output_queues = plot_output_queues
 
+        # Set up central widget and main layout.
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
+        # Plot widget: grid of views.
         self.plot_widget = QWidget()
         grid = QGridLayout(self.plot_widget)
         self.labels = {}
@@ -413,6 +457,7 @@ class MainWindow(QMainWindow):
             grid.addWidget(lbl, pos[0], pos[1])
             self.labels[view] = lbl
 
+        # Legend widget.
         self.legend_area = QScrollArea()
         self.legend_area.setWidgetResizable(True)
         self.legend_widget = QWidget()
@@ -529,6 +574,7 @@ class MainWindow(QMainWindow):
         self.data_dispatcher = data_dispatcher
 
     def update_plots(self):
+        """Update all plot views by checking their output queues."""
         for view, queue in self.plot_output_queues.items():
             while not queue.empty():
                 try:
@@ -544,6 +590,9 @@ class MainWindow(QMainWindow):
 # DATA DISPATCHER FUNCTION
 # -------------------------
 def data_dispatcher_func(zmq_data_queue, plot_input_queues):
+    """
+    Dispatch any new data from the ZMQ receiver into all plotting input queues.
+    """
     while not zmq_data_queue.empty():
         try:
             data = zmq_data_queue.get_nowait()
@@ -557,17 +606,21 @@ def data_dispatcher_func(zmq_data_queue, plot_input_queues):
 # ZMQ RECEIVER FUNCTION
 # -------------------------
 def zmq_receiver(data_queue):
+    """
+    Receives data packets via ZMQ and sends (every PACKET_SKIP-th packet) the unpacked
+    data to the given multiprocessing queue.
+    """
     packet_counter = 0
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
-    socket.connect("tcp://127.0.0.1:5555")
-    socket.setsockopt_string(zmq.SUBSCRIBE, "")
+    socket.connect(ZMQ_ADDRESS)
+    socket.setsockopt_string(zmq.SUBSCRIBE, SUBSCRIBE_TOPIC)
     socket.setsockopt(zmq.RCVTIMEO, 1000)
     while True:
         try:
             packed_data = socket.recv(flags=0)
             packet_counter += 1
-            if packet_counter % 10 == 0:
+            if packet_counter % PACKET_SKIP == 0:
                 data = msgpack.unpackb(packed_data, raw=False)
                 data_queue.put(data)
         except zmq.Again:
@@ -579,7 +632,11 @@ def zmq_receiver(data_queue):
 # -------------------------
 # ENTRY POINT
 # -------------------------
-if __name__ == '__main__':
+def run_app():
+    """
+    Set up the multiprocessing components, start the ZMQ receiver, create the GUI,
+    and start the Qt event loop.
+    """
     mp.set_start_method('spawn')
     zmq_data_queue = mp.Queue()
 
@@ -614,3 +671,7 @@ if __name__ == '__main__':
 
     app.aboutToQuit.connect(cleanup)
     sys.exit(app.exec_())
+
+# Run the application if the module is executed as a script.
+if __name__ == '__main__':
+    run_app()

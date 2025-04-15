@@ -34,19 +34,23 @@ def scan_site(frame_handler, use_stub=False):
     if not use_stub:
         print('Performing site scan')
         moveJ(camera_pos1, ACC, VEL)
-        
+
+        z_offset_value = 0.105
         # Determine Pickup Position using the storage marker:
         pu_pos = find_part(MARKER_DICT["storage"], frame_handler)
-        z_offset_value = 0.105
+        
         translate((0.15, 0.1, z_offset_value), ACC, VEL)
+        pu_pos = mdl.get_joints()
         
         # Determine Construction Site Position:
         moveJ(camera_pos2, ACC, VEL)
         ct_pos = find_part(MARKER_DICT["construction"], frame_handler)
+        translate((0.075, 0.025, 0), ACC, VEL)
+        ct_pos = mdl.get_joints()
         
         # Determine Storage Position:
         moveJ(drop_pos, ACC, VEL)
-        translate((0.1, 0, 0), ACC, VEL)
+        # translate((0.1, 0, 0), ACC, VEL)
         _ = find_part(MARKER_DICT["pick_up"], frame_handler)
         st_pos = mdl.get_joints()
         
@@ -55,19 +59,15 @@ def scan_site(frame_handler, use_stub=False):
         print('Using stub file for site scan')
         path = "/home/avi/Desktop/robomason/_workingdata/_siteinfo/saved_positions.pkl"
         with open(path, "rb") as f:
-            pu_pos, ct_pos, st_pos, _ = pickle.load(f)
+            pu_pos, ct_pos, st_pos = pickle.load(f)
     return pu_pos, ct_pos, st_pos
 
-def update_site_positions(pu_pos, ct_pos, st_pos, extra_data=None):
-    """
-    Saves the scanned site positions to file.
-    """
-    path = "/home/avi/Desktop/robomason/_workingdata/_siteinfo/saved_positions.pkl"
+def update_site_positions(_framehandler,path = "/home/avi/Desktop/robomason/_workingdata/_siteinfo/saved_positions.pkl"):
+    pu_pos, ct_pos, st_pos = scan_site(_framehandler,False)
+
     with open(path, "wb") as f:
-        pickle.dump((pu_pos, ct_pos, st_pos, extra_data), f)
-
-# update_site_positions(pu_pos, ct_pos, st_pos)
-
+        pickle.dump((pu_pos, ct_pos, st_pos), f)
+    print("Positions saved successfully.")
 
 def rotation_matrix_to_vector(rotation_matrix):
             theta = np.arccos((np.trace(rotation_matrix) - 1) / 2)
@@ -319,6 +319,7 @@ def swing(_pos, item,activity):
 def search_element(item,_framehandler, pos = 'pu', marker_dict = MARKER_DICT):
     elements = item
     activity= 'search'
+    print(f"Searching for {item}") 
 
     if item != "Foundation":
         item = item.split("_")[0]
@@ -327,8 +328,6 @@ def search_element(item,_framehandler, pos = 'pu', marker_dict = MARKER_DICT):
         construction_status.state["current_element"] = elements
         construction_status.state["current_state"] = activity
 
-    print(f"Searching for {item}") 
-    task = "Placing " + item
     img = _framehandler.get_latest_frame()
     _, ids = MarkerDetector.find_objects(img)
 
@@ -577,8 +576,9 @@ def perform_construction(IFC_sorted, frame_handler, n_placed, use_stub=False, ma
             
         else:
             # Standard item – follow the sequence.
-            # 1. Search: dict = marker_dict)
-            
+            # 1. Search: 
+            search_element(current_item, frame_handler, marker_dict=marker_dict)
+
             # 2. Pick the item.
             pick_element(current_item, marker_dict = marker_dict)
             

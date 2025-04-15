@@ -673,36 +673,36 @@ def workerdetection_analysis(data):
     df = pd.DataFrame(rows)
     return df
 
-class ElementResolver:
-    def __init__(self):
-        self.wall_count   = 0
-        self.floor_count  = 0
-        self.toilet_count = 0
+# class ElementResolver:
+#     def __init__(self):
+#         self.wall_count   = 0
+#         self.floor_count  = 0
+#         self.toilet_count = 0
 
-    def resolve_element_name(self, raw_element):
-        raw_element = raw_element.lower().strip()
-        elements = {
-            "foundation":       "Foundation",
-            "scanning site":    "Scanning site",
-            "searching element":"Searching element",
-            "wall":             "Wall",
-            "floor":            "Floor",
-            "toilet":           "Bathroom module"
-        }
-        for key, label in elements.items():
-            if key in raw_element:
-                if key in ["scanning site", "searching element", "foundation"]:
-                    return label
-                if key == "wall":
-                    self.wall_count = min(self.wall_count + 1, 2)
-                    return f"{label} {self.wall_count}"
-                if key == "floor":
-                    self.floor_count = min(self.floor_count + 1, 2)
-                    return f"{label} {self.floor_count}"
-                if key == "toilet":
-                    self.toilet_count = min(self.toilet_count + 1, 3)
-                    return f"{label} {self.toilet_count}"
-        return "default"
+#     def resolve_element_name(self, raw_element):
+#         raw_element = raw_element.lower().strip()
+#         elements = {
+#             "foundation":       "Foundation",
+#             "scanning site":    "Scanning site",
+#             "searching element":"Searching element",
+#             "wall":             "Wall",
+#             "floor":            "Floor",
+#             "toilet":           "Bathroom module"
+#         }
+#         for key, label in elements.items():
+#             if key in raw_element:
+#                 if key in ["scanning site", "searching element", "foundation"]:
+#                     return label
+#                 if key == "wall":
+#                     self.wall_count = min(self.wall_count + 1, 2)
+#                     return f"{label} {self.wall_count}"
+#                 if key == "floor":
+#                     self.floor_count = min(self.floor_count + 1, 2)
+#                     return f"{label} {self.floor_count}"
+#                 if key == "toilet":
+#                     self.toilet_count = min(self.toilet_count + 1, 3)
+#                     return f"{label} {self.toilet_count}"
+#         return "default"
     
 def transformation_matrix(a, alpha, d, theta):
     """Return the individual transformation matrix for each joint."""
@@ -732,6 +732,54 @@ def forward_kinematics(joint_angles):
         positions.append(np.array([x, y, z]) + translation)
 
     return positions
+
+# def create_custom_legend_handles():
+#     """
+#     Build a list of legend handles (Line2D objects) for each
+#     element + state combination we want to display.
+#     """
+#     legend_handles = []
+
+#     # List out the elements you want to show in the legend:
+#     elements = [
+#         "Scanning site",
+#         "Foundation",
+#         "Searching element",
+#         "Wall 1",
+#         "Wall 2",
+#         "Floor 1",
+#         "Floor 2",
+#         "Bathroom module 1",
+#         "Bathroom module 2",
+#         "Bathroom module 3"
+#     ]
+
+#     # The states we'll differentiate by line thickness/alpha
+#     states = ["grab", "place"]
+
+#     for element in elements:
+#         color_for_element = ELEMENT_COLORS.get(element, "black")
+
+#         for st in states:
+#             lw    = line_widths.get(st, 2.0)
+#             alpha = line_alpha.get(st, 1.0)
+#             # We'll just keep the same line style '-'
+#             linestyle = line_styles.get(st, '-')
+
+#             # Build a label, e.g. "Wall 1 (grab)" or "Floor 2 (place)"
+#             label_text = f"{element} ({st})"
+
+#             line = Line2D(
+#                 [0], [0],               # dummy data
+#                 color=color_for_element,
+#                 lw=lw,
+#                 linestyle=linestyle,
+#                 alpha=alpha,
+#                 label=label_text
+#             )
+#             legend_handles.append(line)
+
+#     return legend_handles
 
 def add_environment_3d(ax):
     """Draw ground plane & environment boxes in 3D."""
@@ -846,54 +894,6 @@ def plot_robot_2d(ax, joint_angles, view='top', color='k'):
         zs = [p[2] for p in joint_positions]
         ax.plot(ys, zs, marker='o', color=color, linestyle='-', linewidth=2)
 
-def create_custom_legend_handles():
-    """
-    Build a list of legend handles (Line2D objects) for each
-    element + state combination we want to display.
-    """
-    legend_handles = []
-
-    # List out the elements you want to show in the legend:
-    elements = [
-        "Scanning site",
-        "Foundation",
-        "Searching element",
-        "Wall 1",
-        "Wall 2",
-        "Floor 1",
-        "Floor 2",
-        "Bathroom module 1",
-        "Bathroom module 2",
-        "Bathroom module 3"
-    ]
-
-    # The states we'll differentiate by line thickness/alpha
-    states = ["grab", "place"]
-
-    for element in elements:
-        color_for_element = ELEMENT_COLORS.get(element, "black")
-
-        for st in states:
-            lw    = line_widths.get(st, 2.0)
-            alpha = line_alpha.get(st, 1.0)
-            # We'll just keep the same line style '-'
-            linestyle = line_styles.get(st, '-')
-
-            # Build a label, e.g. "Wall 1 (grab)" or "Floor 2 (place)"
-            label_text = f"{element} ({st})"
-
-            line = Line2D(
-                [0], [0],               # dummy data
-                color=color_for_element,
-                lw=lw,
-                linestyle=linestyle,
-                alpha=alpha,
-                label=label_text
-            )
-            legend_handles.append(line)
-
-    return legend_handles
-
 def normalize_element_name(element):
     """
     Convert an element string (which might use underscores) into the format expected
@@ -1006,7 +1006,7 @@ def plot_complete_data(data, title, construction_type="assembly", display_robot=
         segments.append((seg_xs[:], seg_ys[:], seg_zs[:], ls, col, lw, 1.0))
 
     # --- Build integrated legend ---
-    from matplotlib.lines import Line2D
+
     integrated_handles = []
     integrated_labels = []
     # Build a set of normalized unique elements from the data.
@@ -1107,198 +1107,6 @@ def plot_complete_data(data, title, construction_type="assembly", display_robot=
         for fig in figures:
             plt.close(fig)
     return figures
-
-
-def calculate_instantaneous_velocities(pos_data, initial_timestamp=None):
-    velocities = []
-    times = []
-
-    if initial_timestamp is None:
-        initial_timestamp = pos_data[0]['timestamp_send']
-
-    for i in range(1, len(pos_data)):
-        prev_data = pos_data[i - 1]
-        curr_data = pos_data[i]
-
-        # Calculate the distance and time difference
-        distance = calculate_euclidean_distance(prev_data['coordinates'], curr_data['coordinates'])
-        time_diff = curr_data['timestamp_send'] - prev_data['timestamp_send']
-
-        # Calculate velocity and append it to the list
-        if time_diff > 0:
-            velocity = distance / time_diff
-            velocities.append(velocity)
-            # Calculate elapsed time from the initial timestamp
-            times.append(curr_data['timestamp_send'] - initial_timestamp)
-
-    return times, velocities
-
-def plot_velocity_segments(pos_data, start_from_zero=True):
-    # Get the global initial timestamp
-    global_initial_timestamp = pos_data[0]['timestamp_send']
-
-    # Group pos_data by segments (same element and state)
-    segments = []
-    current_segment = [pos_data[0]]
-
-    for i in range(1, len(pos_data)):
-        if (pos_data[i]['element'] == pos_data[i - 1]['element'] and 
-            pos_data[i]['state'] == pos_data[i - 1]['state']):
-            current_segment.append(pos_data[i])
-        else:
-            segments.append(current_segment)
-            current_segment = [pos_data[i]]
-
-    # **Filter out segments 
-    segments = [seg for seg in segments if seg[0]['element'] != 'searching element']
-    segments = [seg for seg in segments if seg[0]['element'] != None]
-
-    segments.append(current_segment)
-
-    # Set up the plotting space with one subplot per segment
-    num_segments = len(segments)
-    fig, axes = plt.subplots(num_segments, 1, figsize=(8, num_segments * 2))
-    if num_segments == 1:
-        axes = [axes]  # Ensure axes is iterable for a single subplot
-
-    # Plot each segment's instantaneous velocity
-    for i, (segment, ax) in enumerate(zip(segments, axes)):
-        if start_from_zero:
-            initial_timestamp = segment[0]['timestamp_send']
-        else:
-            initial_timestamp = global_initial_timestamp
-
-        elapsed_times, velocities = calculate_instantaneous_velocities(segment, initial_timestamp)
-        element = segment[0]['element']
-        state = segment[0]['state']
-
-        ax.plot(elapsed_times, velocities, linestyle='-', linewidth=1.5)
-        ax.set_title(f"Element: {element}, State: {state}")
-        ax.set_ylabel("Velocity (m/s)")
-
-        # Set x-axis ticks and labels explicitly
-        if elapsed_times:
-            min_time = min(elapsed_times)
-            max_time = max(elapsed_times)
-            ticks = np.linspace(min_time, max_time, num=5)
-            ax.set_xticks(ticks)
-            ax.set_xticklabels([f"{tick:.2f}" for tick in ticks])
-        else:
-            ax.set_xticks([])
-            ax.set_xticklabels([])
-
-        # Display major ticks on the x-axis and y-axis
-        ax.tick_params(axis='x', which='major', labelsize=8)
-        ax.tick_params(axis='y', which='major', labelsize=8)
-
-    plt.xlabel("Elapsed Time (s)")
-    plt.tight_layout()
-    # plt.show()
-    return fig
-
-
-def calculate_instantaneous_accelerations(pos_data, initial_timestamp=None):
-    velocities = []
-    velocity_times = []
-
-    if initial_timestamp is None:
-        initial_timestamp = pos_data[0]['timestamp_send']
-
-    # First, calculate velocities
-    for i in range(1, len(pos_data)):
-        prev_data = pos_data[i - 1]
-        curr_data = pos_data[i]
-
-        # Calculate the distance and time difference
-        distance = calculate_euclidean_distance(prev_data['coordinates'], curr_data['coordinates'])
-        time_diff = curr_data['timestamp_send'] - prev_data['timestamp_send']
-
-        # Calculate velocity and append it to the list
-        if time_diff > 0:
-            velocity = distance / time_diff
-            velocities.append(velocity)
-            # Time at which this velocity occurs
-            velocity_times.append(curr_data['timestamp_send'] - initial_timestamp)
-
-    accelerations = []
-    acceleration_times = []
-
-    # Then, calculate accelerations from velocities
-    for i in range(1, len(velocities)):
-        delta_v = velocities[i] - velocities[i - 1]
-        delta_t = velocity_times[i] - velocity_times[i - 1]
-
-        # Calculate acceleration and append it to the list
-        if delta_t > 0:
-            acceleration = delta_v / delta_t
-            accelerations.append(acceleration)
-            # Time at which this acceleration occurs
-            acceleration_times.append(velocity_times[i])
-
-    return acceleration_times, accelerations
-
-def plot_acceleration_segments(pos_data, start_from_zero=True):
-    # Get the global initial timestamp
-    global_initial_timestamp = pos_data[0]['timestamp_send']
-
-    # Group pos_data by segments (same element and state)
-    segments = []
-    current_segment = [pos_data[0]]
-
-    for i in range(1, len(pos_data)):
-        if (pos_data[i]['element'] == pos_data[i - 1]['element'] and 
-            pos_data[i]['state'] == pos_data[i - 1]['state']):
-            current_segment.append(pos_data[i])
-        else:
-            segments.append(current_segment)
-            current_segment = [pos_data[i]]
-
-    segments.append(current_segment)
-
-    # **Filter out segments 
-    segments = [seg for seg in segments if seg[0]['element'] != 'searching element']
-    segments = [seg for seg in segments if seg[0]['element'] != None]
-
-    # Set up the plotting space with one subplot per segment
-    num_segments = len(segments)
-    fig, axes = plt.subplots(num_segments, 1, figsize=(8, num_segments * 2))
-    if num_segments == 1:
-        axes = [axes]  # Ensure axes is iterable for a single subplot
-
-    # Plot each segment's instantaneous acceleration
-    for i, (segment, ax) in enumerate(zip(segments, axes)):
-        # Determine the initial timestamp based on start_from_zero
-        if start_from_zero:
-            initial_timestamp = segment[0]['timestamp_send']
-        else:
-            initial_timestamp = global_initial_timestamp
-
-        elapsed_times, accelerations = calculate_instantaneous_accelerations(segment, initial_timestamp)
-        element = segment[0]['element']
-        state = segment[0]['state']
-
-        ax.plot(elapsed_times, accelerations, linestyle='-', linewidth=1.5)
-        ax.set_title(f"Element: {element}, State: {state}")
-        ax.set_ylabel("Acceleration (m/s²)")
-
-        # Set x-axis ticks and labels explicitly
-        if elapsed_times:
-            min_time = min(elapsed_times)
-            max_time = max(elapsed_times)
-            ticks = np.linspace(min_time, max_time, num=5)
-            ax.set_xticks(ticks)
-            ax.set_xticklabels([f"{tick:.2f}" for tick in ticks])
-        else:
-            ax.set_xticks([])
-            ax.set_xticklabels([])
-
-        # Display major ticks on the x-axis and y-axis
-        ax.tick_params(axis='x', which='major', labelsize=8)
-        ax.tick_params(axis='y', which='major', labelsize=8)
-
-    plt.xlabel("Elapsed Time (s)")
-    plt.tight_layout()
-    return fig
 
 def plot_workers(worker_data, plot_3d=True):
     """
@@ -1636,100 +1444,6 @@ def compute_jacobian(q, DH_params):
         J[3:, i] = Jw
     return J
 
-# def segment_velocity_acceleration_plot(datasegment, first_packet, debug = False):
-#     """
-#     Computes joint and Cartesian velocities and accelerations from a datasegment,
-#     and returns two separate figures: one for velocity, one for acceleration.
-#     """
-#     with np.errstate(divide='ignore', invalid='ignore'):
-#         # First packet included
-#         # data = [first_packet]
-#         # if 'grab' in datasegment:
-#         #     data += datasegment['grab']
-#         # if 'place' in datasegment:
-#         #     data += datasegment['place']
-#         # n = len(data)
-
-#         # First packet not included
-#         if 'grab' in datasegment:
-#             data = datasegment['grab']
-#         if 'place' in datasegment:
-#             data = datasegment['place']
-#         n = len(data)
-
-#         t0 = first_packet['timestamp_send']
-#         times = np.array([pkt['timestamp_send'] - t0 for pkt in data])
-#         joint_angles = np.array([pkt['joints'] for pkt in data])
-#         joint_velocities = np.gradient(joint_angles, times, axis=0)
-#         joint_accelerations = np.gradient(joint_velocities, times, axis=0)
-
-#         jacobians = [compute_jacobian(q, DH_params) for q in joint_angles]
-#         jacobians = np.array(jacobians)
-
-#         cartesian_velocities = np.array([jacobians[i] @ joint_velocities[i] for i in range(n)])
-        
-#         cartesian_accelerations = []
-#         for i in range(n - 1):
-#             dt = times[i+1] - times[i]
-#             J_dot = (jacobians[i+1] - jacobians[i]) / dt if dt != 0 else np.zeros_like(jacobians[i])
-#             a_cart = jacobians[i] @ joint_accelerations[i] + J_dot @ joint_velocities[i]
-#             cartesian_accelerations.append(a_cart)
-#         cartesian_accelerations.append(jacobians[-1] @ joint_accelerations[-1])
-#         cartesian_accelerations = np.array(cartesian_accelerations)
-
-#         linear_vel = np.linalg.norm(cartesian_velocities[:, :3], axis=1)
-#         angular_vel = np.linalg.norm(cartesian_velocities[:, 3:], axis=1)
-#         linear_acc = np.linalg.norm(cartesian_accelerations[:, :3], axis=1)
-#         angular_acc = np.linalg.norm(cartesian_accelerations[:, 3:], axis=1)
-
-#     # --- Velocity Figure ---
-#     fig_vel, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
-
-#     # Linear velocity subplot
-#     ax1.plot(times, linear_vel, label='Linear Velocity')
-#     ax1.set_xlabel('Time [s]')
-#     ax1.set_ylabel('Linear Velocity [m/s]')
-#     # ax1.set_title(f"Linear Velocity (Segment: {datasegment['instance']})")
-#     ax1.grid(True)
-#     ax1.legend(loc='upper left', bbox_to_anchor=(1, 1))
-
-#     # Angular velocity subplot
-#     ax2.plot(times, angular_vel, label='Angular Velocity')
-#     ax2.set_xlabel('Time [s]')
-#     ax2.set_ylabel('Angular Velocity [rad/s]')
-#     # ax2.set_title(f"Angular Velocity (Segment: {datasegment['instance']})")
-#     ax2.grid(True)
-#     ax2.legend(loc='upper left', bbox_to_anchor=(1, 1))
-    
-#     fig_vel.tight_layout(rect=[0, 0, 0.9, 1])
-#     # # --- Acceleration Figure ---
-#     fig_acc, (ax3, ax4) = plt.subplots(2, 1, figsize=(10, 8))
-
-#     # Linear acceleration subplot
-#     ax3.plot(times, linear_acc, label='Linear Acceleration')
-#     ax3.set_xlabel('Time [s]')
-#     ax3.set_ylabel('Linear Acceleration [m/s²]')
-#     # ax3.set_title(f"Linear Acceleration (Segment: {datasegment['instance']})")
-#     ax3.grid(True)
-#     ax3.legend(loc='upper left', bbox_to_anchor=(1, 1))
-
-#     # Angular acceleration subplot
-#     ax4.plot(times, angular_acc, label='Angular Acceleration')
-#     ax4.set_xlabel('Time [s]')
-#     ax4.set_ylabel('Angular Acceleration [rad/s²]')
-#     # ax4.set_title(f"Angular Acceleration (Segment: {datasegment['instance']})")
-#     ax4.grid(True)
-#     ax4.legend(loc='upper left', bbox_to_anchor=(1, 1))
-
-#     fig_acc.tight_layout(rect=[0, 0, 0.9, 1])
-
-#     if debug:
-#         plt.show()
-
-#     plt.close(fig_vel)
-#     plt.close(fig_acc)
-
-#     return fig_vel, fig_acc, times, cartesian_velocities, cartesian_accelerations
 
 def segment_velocity_acceleration_plot(datasegment, first_packet, debug=False):
     """
@@ -1933,45 +1647,6 @@ def complete_velocity_acceleration_plot(data, debug=False):
     plt.close(fig_acc)
     
     return fig_vel, fig_acc, times, cartesian_velocities, cartesian_accelerations
-
-
-# def analyse_segment(_pos_data):
-#     segments = segment_data(_pos_data)
-#     plots = []
-#     for i, segment in enumerate(segments):
-#         print(segments[i]['instance'])
-
-#         # Determine first packet for timing reference
-#         if 'grab' in segment:
-#             ref_packet = segment['grab'][0]
-#         elif 'place' in segment:
-#             ref_packet = segment['place'][0]
-#         else:
-#             print(f"Skipping segment {segment['instance']} due to missing 'grab' and 'place'")
-#             continue
-
-#         fig_vel, fig_acc, _, _, _ = segment_velocity_acceleration_plot(segment, ref_packet)
-
-#         figures = {}
-#         if 'grab' in segment:
-#             figures['grab'] = plot_complete_data(segment['grab'], segment['instance'])
-
-#         # Plot place trajectory
-#         if 'place' in segment:
-#             figures['place'] = plot_complete_data(segment['place'], segment['instance'])
-    
-#         packet = {
-#             'segment':segment['instance'],
-#             'kinematic plots': [fig_vel, fig_acc],
-#             'trajectory_plots': figures,
-#         }
-        
-#         if i == 0 and 'grab' in segment:
-#             fov_plotter = FOVPlotter()
-#             FOV_figures = fov_plotter.plot_FOV(segments[0]['grab'], view="2d", representation="area")
-#             packet['FOV'] = FOV_figures
-#         plots.append(packet)
-#     return plots
 
 def analyse_segment(_pos_data, construction_type="assembly"):
     """
