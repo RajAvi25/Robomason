@@ -30,21 +30,22 @@ from .bathroom import (
 
 # Core construction operations
 from .construction import (
-    perform_construction,
     pick,
     place,
     scan_site,
-    perform_reconstruction,
     disassembly,
     pick_random_element,
     place_random_element,
-    test_function,
-    check_continue,
+    check_resume,
     update_site_positions,
+    construct_and_verify,
+    reconstruct_and_verify,
+    install_Foundation
+
 )
 
-from system_config import *
-from construction_config import *
+from configs.system_config import *
+from configs.construction_config import *
 
 from . import analysis 
 
@@ -64,8 +65,8 @@ __all__ = [
     "handle_toilet_placement", "routine_for_bathroom",
 
     # Construction
-    "perform_construction", "pick", "place", "scan_site",
-    "perform_reconstruction", "disassembly",
+    "pick", "place", "scan_site", "disassembly",
     "pick_random_element", "place_random_element",
-    "test_function", "check_continue", "update_site_positions",
+    "check_resume", "update_site_positions","construct_and_verify","reconstruct_and_verify",
+    "install_Foundation"
 ]

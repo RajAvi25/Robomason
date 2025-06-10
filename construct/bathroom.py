@@ -5,8 +5,6 @@ from func_timeout import FunctionTimedOut, func_timeout
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-from system_config import *
-from construction_config import *
 from ui.mobility import *
 from .utils import calculate_distance
 import ui.MarkerDetectionLocalization as mdl
@@ -15,6 +13,20 @@ from math import pi
 from .construction import swing
 
 from . import construction_status
+
+from configs.system_config import *
+from configs.construction_config import *
+
+def rotation_matrix_to_vector(rotation_matrix):
+            theta = np.arccos((np.trace(rotation_matrix) - 1) / 2)
+            if np.isclose(theta, 0):
+                return np.zeros(3)
+            r = np.array([
+                rotation_matrix[2, 1] - rotation_matrix[1, 2],
+                rotation_matrix[0, 2] - rotation_matrix[2, 0],
+                rotation_matrix[1, 0] - rotation_matrix[0, 1]
+            ]) / (2 * np.sin(theta))
+            return r * theta
 
 def find_center(frame, LB, UB, min_area, max_area, debug=False):
     """
@@ -130,7 +142,7 @@ def grab_toilet(LB, UB, frame_handler):
         z_offset = mdl.get_EE_coords()[2] - ground_z_zero - 0.009
         translate((camera_offsets['x'], camera_offsets['y'], z_offset), ACC, VEL)
         gripper_width(0)
-        time.sleep(2.15)
+        time.sleep(3)
         placed_pos = {
         "coords": mdl.get_EE_coords(),
         "orientation": mdl.get_orientation()
@@ -151,7 +163,7 @@ def place_toilet(IFC_sorted, n_placed):
     x_move = float(prev_part[0]) / 100
     y_move = float(prev_part[1]) / 100
     z_move = mdl.get_EE_coords()[2] - float(prev_part[2]) / 100
-    
+ 
     translate((x_move, y_move, 0), ACC, VEL)
     
     if name == "Floor":
@@ -172,21 +184,26 @@ def place_toilet(IFC_sorted, n_placed):
             y_extra = y_offest_bathroom_module_place_2 
             z_extra = z_offest_bathroom_module_place_2 
 
-
+        print(f"I am at: {mdl.get_EE_coords()}")
         translate((x_extra, y_extra,0), ACC, VEL)
-        translate((0, 0, (z_move/1)+z_extra), ACC, VEL)
-    elif name == "Foundation":
-        y_extra = -0.01  
-        x_extra = -0.005   
-        z_extra = -0.197   #Bigger value in -ve moves it up.
+        print(f"Now, I am at: {mdl.get_EE_coords()}")
+        print(f"Ground: {z_move+z_extra} which is z_move({z_move}) + z_extra({z_extra})")
+        translate((0, 0, z_move+z_extra), ACC, VEL)
 
+    elif name == "Foundation":
+        y_extra = 0.00125  # Bigger value in -ve moves it up (w.r.t foundation from top camera view)
+        x_extra = 0.006  # Bigger value in -ve moves it right (w.r.t foundation from top camera view)
+        z_extra = -0.205   #Bigger value in -ve moves it up.
+        # print(f"I am at: {mdl.get_EE_coords()}")
     #If there will be no other part then do this:
     if len(IFC_sorted[:,0]) <= n_placed+1:
         z_move = z_move * 0.98  #dont question this.
 
     if name == 'Foundation':
+        print("Placing toilet on Foundation")
         set_orientation(orientations['ct'],ACC, VEL)
         translate((x_extra, y_extra, z_move/2), ACC, VEL)
+        # print(f"I am at: {mdl.get_EE_coords()}")
         translate((0, 0, (z_move/2)+z_extra), ACC, VEL)
 
     gripper_width(100)
@@ -196,7 +213,7 @@ def place_toilet(IFC_sorted, n_placed):
         "coords": mdl.get_EE_coords(),
         "orientation": mdl.get_orientation()
         }
-    translate((0, 0, -0.07), ACC, VEL)
+    translate((0, 0, -0.04), ACC, VEL)
     return placed_pos
 
 def handle_toilet_placement(IFC_sorted, n_placed, frame_handler, ct_pos, st_pos):
@@ -238,7 +255,7 @@ def handle_toilet_placement(IFC_sorted, n_placed, frame_handler, ct_pos, st_pos)
     toilet_place_pos = place_toilet(IFC_sorted, n_placed)
     return (toilet_grab_pos, toilet_place_pos)
 
-def ask_for_color(_framehandler, idx, timeout=5):
+def ask_for_color(_board, _framehandler, idx, timeout=5):
     elements = f'bathroom_module_{idx}'
     activity= 'search'
 
@@ -246,7 +263,12 @@ def ask_for_color(_framehandler, idx, timeout=5):
         construction_status.state["current_element"] = elements
         construction_status.state["current_state"] = activity
     # Unpack color detection results
-    red_found, blue_found = check_frame(bathroom_module_color_thresholds, bathroom_module_area_thresholds, _framehandler)
+    red_found, blue_found = check_frame(
+        bathroom_module_color_thresholds, 
+        bathroom_module_area_thresholds, 
+        _framehandler
+        )
+    
     print("Red found =", red_found)
     print("Blue found =", blue_found)
 
@@ -261,30 +283,42 @@ def ask_for_color(_framehandler, idx, timeout=5):
     if not available_colors:
         print("No red or blue color found in the frame. Cannot place any toilet.")
         return None
+    
+    if len(available_colors) == 1:
+        chosen = available_colors[0]
+        print(f"Only '{chosen}' detected; automatically selecting {chosen}.")
+        return chosen
 
-    # Ask user to pick a color
-    answer = None
-    try:
-        answer = func_timeout(timeout, lambda: input(f"Input color of toilet you want placed {available_colors}:\n")).strip().lower()
-    except FunctionTimedOut:
-        print("Too slow, I will just pick a color for you!")
-
-    # Validate user input
-    if answer in available_colors:
-        pass  # valid input already
-    elif answer in ("red", "r"):
-        answer = "r"
-    elif answer in ("blue", "b"):
-        answer = "b"
     else:
-        answer = random.choice(available_colors)
-        print(f"Auto-selected color: {answer}")
-        
-    return answer
+        # Ask user to pick a color
+        answer = None
+
+        try:
+            prompt_text = f"Input color of bathroom module you want placed {available_colors}:"
+            answer = _board.ask(prompt_text, tuple(available_colors), timeout)
+        #     answer = func_timeout(timeout, lambda: input(f"Input color of toilet you want placed {available_colors}:\n")).strip().lower()
+        # except FunctionTimedOut:
+        except Exception:
+            print("Too slow, I will just pick a color for you!")
+            answer = None
+
+        # Validate user input
+        if answer in available_colors:
+            pass  # valid input already
+        elif answer in ("red", "Red"):
+            answer = "r"
+        elif answer in ("blue", "Blue"):
+            answer = "b"
+        else:
+            answer = random.choice(available_colors)
+            print(f"Auto-selected color: {answer}")
+        return answer
 
 def pick_bathroom_module(color, idx,_framehandler):
     elements = f'bathroom_module_{idx}'
     activity= 'pick'
+
+    toilet_pos_grab = None
 
     with construction_status.state_lock:
         construction_status.state["current_element"] = elements
@@ -299,7 +333,7 @@ def pick_bathroom_module(color, idx,_framehandler):
             bathroom_module_color_thresholds["blue"]["UB"],_framehandler)
     return toilet_pos_grab
 
-def place_bathroom_module(IFC_sorted, idx, n_placed):
+def place_bathroom_module(IFC_sorted, idx):
     elements = f'bathroom_module_{idx}'
     activity= 'place'
 
@@ -307,16 +341,30 @@ def place_bathroom_module(IFC_sorted, idx, n_placed):
         construction_status.state["current_element"] = elements
         construction_status.state["current_state"] = activity
 
+    if idx == 1:
+        n_placed = 0
+    if idx == 2:
+        n_placed = 2
+    if idx == 3:
+        n_placed = 4
+
     toilet_pos = place_toilet(IFC_sorted, n_placed)
     return toilet_pos
 
-def routine_for_bathroom(_framehandler, idx, place_pos_bathroom, pickup_pos_element, _IFC_sorted, n_placed):
+def routine_for_bathroom(
+        _board,
+        _framehandler, 
+        idx, 
+        place_pos_bathroom, 
+        _IFC_sorted):
     print("We should now place a colored toilet!")
-    answer = ask_for_color(_framehandler,idx)
+    answer = ask_for_color(_board, _framehandler,idx)
+    if answer == None:
+        return None,None
     time.sleep(0.5)
     toilet_pos_grab = pick_bathroom_module(answer, idx,_framehandler)
     time.sleep(0.5)
     swing(place_pos_bathroom,f"bathroom_module_{idx}","swing")
-    toilet_pos = place_bathroom_module( _IFC_sorted, idx, n_placed)
-    swing(pickup_pos_element,f"bathroom_module_{idx}","swing_back")
+    toilet_pos = place_bathroom_module( _IFC_sorted, idx)
+    # swing(pickup_pos_element,f"bathroom_module_{idx}","swing_back")
     return toilet_pos_grab, toilet_pos

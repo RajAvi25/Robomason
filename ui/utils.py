@@ -2,8 +2,10 @@
 
 import os
 import re
+import subprocess
 from pathlib import Path
 import pickle
+import shutil
 
 import base64
 
@@ -27,6 +29,25 @@ from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
 import webbrowser
+
+def show_project_structure():
+    directory = "/home/avi/Desktop/robomason"
+    for root, _, files in os.walk(directory):
+        level = root.replace(directory, "").count(os.sep)
+        indent_space = " " * 4 * level
+        print(f"{indent_space}- {os.path.basename(root)}/")  # Print folder name
+        for file in files:
+            print(f"{indent_space}    - {file}") 
+
+def initializeUI():
+    ui.system_setup()
+    framehandler = camera.FrameHandler(ws_url="ws://localhost:9090", camera_index=4, frame_rate=15, is_sender=False)
+    threading.Thread(target=framehandler.start_streaming, daemon=True).start()
+    time.sleep(1.5)
+    frame = framehandler.get_latest_frame()
+    plt.imshow(frame)
+    return framehandler
+
 
 def analyze_trajectory(options,construction_type):
     """
@@ -421,25 +442,6 @@ def save_results(results, data, mode='ct'):
     print(f"Results saved in {new_folder_path}")
     return new_folder_path
 
-
-def show_project_structure():
-    directory = "/home/avi/Desktop/robomason"
-    for root, _, files in os.walk(directory):
-        level = root.replace(directory, "").count(os.sep)
-        indent_space = " " * 4 * level
-        print(f"{indent_space}- {os.path.basename(root)}/")  # Print folder name
-        for file in files:
-            print(f"{indent_space}    - {file}") 
-
-def initializeUI():
-    ui.system_setup()
-    framehandler = camera.FrameHandler(ws_url="ws://localhost:9090", camera_index=4, frame_rate=15, is_sender=False)
-    threading.Thread(target=framehandler.start_streaming, daemon=True).start()
-    time.sleep(1.5)
-    frame = framehandler.get_latest_frame()
-    plt.imshow(frame)
-    return framehandler
-
 def open_html_in_browser(html_file_path):
     """
     Opens the specified HTML file in the default web browser.
@@ -537,271 +539,199 @@ def encode_image_to_data_uri(filepath, mime_type="image/svg+xml"):
         print(f"Error encoding {filepath}: {e}")
         return ""
 
-def create_construction_summary_html(segment_folder_path):
+def create_construction_summary_html(segment_folder_path,
+                                     table_max_height: int = 400):
     """
-    Generates an HTML file with a construction summary based on files in the input folder.
-    Embeds images directly as data URIs so that the resulting HTML is a standalone file.
-    
+    Generates an HTML summary page in `segment_folder_path/Accumulated data.html`.
+    Copies all detected SVGs into an `images/` subfolder and references them
+    with purely relative paths so you can share the folder intact.
+
     Parameters:
-        segment_folder_path (str): The path to the folder that contains the Excel and segment files.
-    
+        segment_folder_path (str): folder containing .xlsx and .svg files
+        table_max_height (int): max-px height for scrollable tables
+
     Returns:
-        str: The absolute path to the generated HTML file.
+        str: absolute path to the generated HTML file
     """
-    # Get folder name and define the output HTML filename
-    folder_name = os.path.basename(os.path.normpath(segment_folder_path))
-    output_file = os.path.join(segment_folder_path, "Accumulated data.html")
+    # --- Setup output paths ---
+    output_file   = os.path.join(segment_folder_path, "Accumulated data.html")
+    images_dir    = os.path.join(segment_folder_path, "images")
+    os.makedirs(images_dir, exist_ok=True)
+    images_folder = "images"  # relative folder name for src attributes
 
-    parent_folder_1 = os.path.dirname(segment_folder_path)
-    parent_folder_2 = os.path.dirname(parent_folder_1)
-    diff = os.path.relpath(parent_folder_1, parent_folder_2)
-    diff_cleaned = diff.replace("_", " ").replace("runs", " Run").strip().title()
-    html_title = f"{diff_cleaned} Summary"
+    # --- Title from folder structure ---
+    p1 = os.path.dirname(segment_folder_path)
+    p2 = os.path.dirname(p1)
+    diff = os.path.relpath(p1, p2).replace("_", " ").replace("runs", " Run").title().strip()
+    html_title = f"{diff} Summary"
 
-    # Define paths to Excel files and images
-    construction_summary_path = os.path.join(segment_folder_path, "trajectory_summary.xlsx")
-    worker_detection_path = os.path.join(segment_folder_path, "worker_detection.xlsx")
-    hazard_summary_path = os.path.join(segment_folder_path, "hazard_summary.xlsx")
-    marker_detection_path = os.path.join(segment_folder_path, "marker detection events.svg")
-    
-    # Define paths for images in a sibling folder
-    base_path_parent = segment_folder_path
-    worker_images = [
-        os.path.join(base_path_parent, "worker_Isometric view_.svg"),
-        os.path.join(base_path_parent, "worker_Plan view.svg")
+    # --- Helpers ---
+    def img_tag(src_path, alt_text):
+        # copy into images/ if not already there
+        fname = os.path.basename(src_path)
+        dst   = os.path.join(images_dir, fname)
+        if not os.path.exists(dst):
+            shutil.copy2(src_path, dst)
+        # always use relative path "images/<fname>"
+        rel = f"{images_folder}/{fname}"
+        return f'<img src="{rel}" alt="{alt_text}" loading="lazy">'
+
+    def wrap_table(df):
+        html = df.to_html(index=False, classes="dataframe", border=0)
+        return (f'<div style="max-height:{table_max_height}px; '
+                f'overflow:auto; margin-bottom:20px;">{html}</div>')
+
+    # --- Data paths ---
+    conf_xlsx   = os.path.join(segment_folder_path, "trajectory_summary.xlsx")
+    worker_xlsx = os.path.join(segment_folder_path, "worker_detection.xlsx")
+    hazard_xlsx = os.path.join(segment_folder_path, "hazard_summary.xlsx")
+    marker_svg  = os.path.join(segment_folder_path, "marker detection events.svg")
+
+    # image filenames (in segment_folder_path)
+    worker_svgs = ["worker_Isometric view_.svg", "worker_Plan view.svg"]
+    traj_svgs   = [
+        "trajectory_Isometric view.svg",
+        "trajectory_Plan view.svg",
+        "trajectory_Side view.svg",
+        "trajectory_Front view.svg",
+        "complete_velocity_plot.svg",
+        "complete_acceleration_plot.svg"
     ]
-    
-    trajectory_images = [
-        os.path.join(base_path_parent, "trajectory_Isometric view.svg"),
-        os.path.join(base_path_parent, "trajectory_Plan view.svg"),
-        os.path.join(base_path_parent, "trajectory_Side view.svg"),
-        os.path.join(base_path_parent, "trajectory_Front view.svg")
-    ]
-    
-    # List to hold HTML for each section (tile)
-    html_sections = []
-    
-    # --- 1. Kinematics & Trajectory ---
-    combined_images = trajectory_images + [
-        os.path.join(base_path_parent, "complete_velocity_plot.svg"),
-        os.path.join(base_path_parent, "complete_acceleration_plot.svg")
-    ]
-    available_images = [img for img in combined_images if os.path.exists(img)]
-    if available_images:
-        traj_section = """
+
+    sections = []
+
+    # 1) Kinematics & Trajectory
+    traj_paths = [os.path.join(segment_folder_path, f) for f in traj_svgs]
+    avail = [p for p in traj_paths if os.path.exists(p)]
+    if avail:
+        html = ['''
     <div class="section">
-        <h2>Kinematics & Trajectory</h2>
-        <div class="image-grid">
-        """
-        for path in available_images:
-            data_uri = encode_image_to_data_uri(path, mime_type="image/svg+xml")
-            if data_uri:
-                alt_text = os.path.splitext(os.path.basename(path))[0].replace("_", " ").capitalize()
-                traj_section += f'<img src="{data_uri}" alt="{alt_text}">\n'
-        traj_section += """
-        </div>
-    </div>
-        """
-        html_sections.append(traj_section)
-    
-    # --- 2. Construction Summary ---
-    if os.path.exists(construction_summary_path):
+      <h2>Kinematics & Trajectory</h2>
+      <div class="image-grid">
+        ''']
+        for p in avail:
+            alt = os.path.splitext(os.path.basename(p))[0].replace("_", " ").capitalize()
+            html.append(img_tag(p, alt))
+        html.append('''
+      </div>
+    </div>''')
+        sections.append("".join(html))
+
+    # 2) Construction Summary
+    if os.path.exists(conf_xlsx):
         try:
-            df_construction = pd.read_excel(construction_summary_path)
-            html_table_construction = df_construction.to_html(index=False, classes="dataframe", border=0)
-            
-            # Determine summary type based on parent folder
-            parent_folder_1 = os.path.dirname(segment_folder_path)
-            parent_folder_2 = os.path.dirname(parent_folder_1)
-            diff = os.path.relpath(parent_folder_1, parent_folder_2)
-            summary_title_map = {
+            df = pd.read_excel(conf_xlsx)
+            tbl = wrap_table(df)
+            key = os.path.relpath(p1, p2)
+            title_map = {
                 "_constructionruns": "Assembly Summary",
-                "_disassemblyruns": "Disassembly Summary",
-                "_reconstructionruns": "Reassembly Summary"
+                "_disassemblyruns":  "Disassembly Summary",
+                "_reconstructionruns":"Reassembly Summary"
             }
-            section_title = summary_title_map.get(diff, "Construction Summary")
-
-            cons_section = f"""
+            sec_title = title_map.get(key, "Construction Summary")
+            html = [f'''
     <div class="section">
-        <h2>{section_title}</h2>
-        {html_table_construction}
-        <div class="explanation">
-            """
-            for key, text in explanations.items():
-                if "Formula" in key:
-                    cons_section += f'<p class="formula">{text}</p>\n'
+      <h2>{sec_title}</h2>
+      {tbl}
+      <div class="explanation">
+            ''']
+            for k, txt in explanations.items():
+                if "Formula" in k:
+                    html.append(f'<p class="formula">{txt}</p>')
                 else:
-                    cons_section += f'<p><strong>{key}</strong>: {text}</p>\n'
-            cons_section += """
-        </div>
-    </div>
-            """
-            html_sections.append(cons_section)
+                    html.append(f'<p><strong>{k}</strong>: {txt}</p>')
+            html.append('''
+      </div>
+    </div>''')
+            sections.append("".join(html))
         except Exception as e:
-            print(f"Error processing construction summary: {e}")
-    
-    # --- 3. Hazard Analysis ---
-    if os.path.exists(hazard_summary_path) and os.path.exists(marker_detection_path):
+            print("Construction summary error:", e)
+
+    # 3) Hazard Analysis
+    if os.path.exists(hazard_xlsx) and os.path.exists(marker_svg):
         try:
-            df_hazard = pd.read_excel(hazard_summary_path)
-            html_table_hazard = df_hazard.to_html(index=False, classes="dataframe", border=0)
-            marker_detection_data_uri = encode_image_to_data_uri(marker_detection_path, mime_type="image/svg+xml")
-            haz_section = f"""
+            dfh = pd.read_excel(hazard_xlsx)
+            tbl_h = wrap_table(dfh)
+            img_h = img_tag(marker_svg, "Marker Detection Events")
+            html = f'''
     <div class="section">
-        <h2>Hazard Analysis</h2>
-        {html_table_hazard}
-        <div class="image-grid" style="margin-top: 20px;">
-            <img src="{marker_detection_data_uri}" alt="Marker Detection Events" style="max-width:90%; border:1px solid #ccc;">
-        </div>
-    </div>
-            """
-            html_sections.append(haz_section)
+      <h2>Hazard Analysis</h2>
+      {tbl_h}
+      <div class="image-grid" style="margin-top:20px;">
+        {img_h}
+      </div>
+    </div>'''
+            sections.append(html)
         except Exception as e:
-            print(f"Error processing hazard analysis: {e}")
-    
-    # --- 4. Worker Views ---
-    available_worker_images = [img for img in worker_images if os.path.exists(img)]
-    if available_worker_images:
-        worker_views_section = """
+            print("Hazard analysis error:", e)
+
+    # 4) Workers & Work Zones
+    wpaths = [os.path.join(segment_folder_path, f) for f in worker_svgs]
+    wavail = [p for p in wpaths if os.path.exists(p)]
+    if wavail:
+        html = ['''
     <div class="section">
-        <h2>Workers and Work zones</h2>
-        <div class="image-grid">
-        """
-        for path in available_worker_images:
-            data_uri = encode_image_to_data_uri(path, mime_type="image/svg+xml")
-            if data_uri:
-                worker_views_section += f'<img src="{data_uri}" alt="Worker View">\n'
-        worker_views_section += """
-        </div>
-    </div>
-        """
-        html_sections.append(worker_views_section)
-    
-    # --- 5. Worker Detection ---
-    if os.path.exists(worker_detection_path):
+      <h2>Workers and Work Zones</h2>
+      <div class="image-grid">
+        ''']
+        for p in wavail:
+            html.append(img_tag(p, "Worker View"))
+        html.append('''
+      </div>
+    </div>''')
+        sections.append("".join(html))
+
+    # 5) Worker Detection
+    if os.path.exists(worker_xlsx):
         try:
-            df_worker_detection = pd.read_excel(worker_detection_path)
-            if df_worker_detection.empty:
-                worker_detection_table = "<p>No worker detection data available.</p>"
-            else:
-                worker_detection_table = df_worker_detection.to_html(index=False, classes="dataframe", border=0)
-            worker_det_section = f"""
+            dfw = pd.read_excel(worker_xlsx)
+            tbl_w = ("<p>No worker detection data available.</p>"
+                     if dfw.empty else wrap_table(dfw))
+            html = f'''
     <div class="section">
-        <h2>Worker Detection</h2>
-        {worker_detection_table}
-    </div>
-            """
-            html_sections.append(worker_det_section)
+      <h2>Worker Detection</h2>
+      {tbl_w}
+    </div>'''
+            sections.append(html)
         except Exception as e:
-            print(f"Error processing worker detection: {e}")
-    
-    # --- 6. Segment Analysis ---
-    segment_file_list_html = generate_segment(segment_folder_path)
-    if segment_file_list_html.strip():
-        seg_section = f"""
+            print("Worker detection error:", e)
+
+    # 6) Segment Analysis
+    seg_html = generate_segment(segment_folder_path)
+    if seg_html.strip():
+        sections.append(f'''
     <div class="section">
-        <h2>Segment Analysis</h2>
-        {segment_file_list_html}
-    </div>
-        """
-        html_sections.append(seg_section)
-    
-    # --- Build the complete HTML content ---
-    html_content = f"""
-<!DOCTYPE html>
+      <h2>Segment Analysis</h2>
+      {seg_html}
+    </div>''')
+
+    # --- Write HTML ---
+    header = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>{html_title}</title>
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 20px;
-        }}
-        h1 {{
-            text-align: center;
-            margin-bottom: 40px;
-        }}
-        .section {{
-            background: white;
-            padding: 20px;
-            margin-bottom: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }}
-        .section h2 {{
-            text-align: center;
-            margin-bottom: 20px;
-        }}
-        .image-grid {{
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            justify-items: center;
-        }}
-        .image-grid img {{
-            max-width: 100%;
-            height: auto;
-            max-height: 70vh;
-            border: 1px solid #ccc;
-            display:block;
-            margin: 0 auto;
-        }}
-        .image-grid img:only-child {{
-            grid-column: 1 / -1;
-            justify-self: center;
-        }}
-        @media (min-width: 768px) {{
-            .image-grid img {{
-                max-width: 45vw;
-            }}
-        }}
-        .dataframe {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-        }}
-        .dataframe th, .dataframe td {{
-            border: 1px solid #ccc;
-            padding: 6px 10px;
-            text-align: left;
-        }}
-        .dataframe thead {{
-            background-color: #f0f0f0;
-        }}
-        .dataframe tr:nth-child(even) {{
-            background-color: #fafafa;
-        }}
-        .explanation {{
-            margin-top: 20px;
-        }}
-        .formula {{
-            font-style: italic;
-            text-align: center;
-            margin-top: 10px;
-        }}
-    </style>
-    <script type="text/javascript" async
-        src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
-    </script>
+  <meta charset="UTF-8">
+  <title>{html_title}</title>
+  <style>
+    /* your CSS here… */
+  </style>
+  <script async
+    src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
+  </script>
 </head>
 <body>
-    <h1>{html_title}</h1>
-"""
-    for section in html_sections:
-        html_content += section
-    html_content += """
+  <h1>{html_title}</h1>
+'''
+    footer = '''
 </body>
-</html>
-    """
-    
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write(html_content)
-    
-    return os.path.abspath(output_file)
+</html>'''
 
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(header)
+        for sec in sections:
+            f.write(sec + "\n")
+        f.write(footer)
+
+    return os.path.abspath(output_file)
 
 def save_results(results, data, mode):
     """

@@ -1,11 +1,15 @@
+import os
 import json
 import base64
 import cv2
 import numpy as np
 from detections.marker_detector import MarkerDetector
-from system_config import R_ZERO
+from configs.system_config import R_ZERO
 
 class Localizer:
+
+    DETECTIONS_DIR = "/home/avi/Desktop/robomason/_workingdata/_detections"
+
     @staticmethod
     def camera_to_world_coords(c, x_disp, y_disp, in_cm=False):
         x = (-c[0]) + x_disp
@@ -49,6 +53,7 @@ class Localizer:
             ref_x = 0.0
             ref_y = -0.45
             data = json.loads(message)
+            timestamp = data.get('timestamp_send', 'no_timestamp')
             img_base64 = data['image']
             img_data = base64.b64decode(img_base64)
             img_array = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
@@ -64,6 +69,19 @@ class Localizer:
             markers = MarkerDetector.get_marker_coordinates(img_array, ang, is_debugging)
             results = []
             if markers is not None:
+                # font = cv2.FONT_HERSHEY_SIMPLEX
+                # font_scale = 1
+                # thickness = 2
+                # color = (0, 255, 0)  # green; adjust as needed
+                # position = (10, 30)  # x=10px, y=30px
+                # cv2.putText(img_array, str(timestamp), position, font, font_scale, color, thickness)
+
+                # os.makedirs(save_path, exist_ok=True)
+                # # Construct filename (replace any ":" in timestamp for filesystem safety)
+                # safe_ts = str(timestamp).replace(":", "-")
+                # filename = os.path.join(save_path, f"{safe_ts}.png")
+                # cv2.imwrite(filename, img_array)
+
                 for (c, marker_id) in markers:
                     c_new = Localizer.camera_to_world_coords(c, ground_x, ground_y, in_cm=False)
                     c_new = tuple(round(coord, 4) for coord in c_new)

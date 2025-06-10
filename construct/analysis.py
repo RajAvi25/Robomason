@@ -12,8 +12,8 @@ from matplotlib.patches import Rectangle, Patch
 
 from shapely.geometry import Polygon
 
-from construction_config import *
-from system_config import *
+from configs.system_config import *
+from configs.construction_config import *
 
 display_robot = True
 

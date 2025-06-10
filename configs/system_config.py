@@ -45,3 +45,4 @@ VEL = 0.2
 
 ground_z_zero = 0.19225675659682884 #When end-effector[2] is here with closed gripper,we hit ground.
 
+STAGE_FILE = '/home/avi/Desktop/robomason/_workingdata/_siteinfo/_Construction_state/_stage.txt'

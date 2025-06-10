@@ -3,8 +3,8 @@
 import math
 import random
 from ui.mobility import moveJ, translate
-from system_config import *
-from construction_config import *
+from configs.system_config import *
+from configs.construction_config import *
 
 def calculate_distance(x1, y1, x2, y2):
     """Calculate Euclidean distance between two points."""

@@ -10,8 +10,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from system_config import *
-from construction_config import *
+from configs.system_config import *
+from configs.construction_config import *
 
 
 def CEP50_plot(all_data, actual_position, aroundTrue=False, issmall=False, test_number=None, isShow=True):

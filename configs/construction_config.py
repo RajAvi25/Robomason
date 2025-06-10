@@ -136,8 +136,8 @@ IFC_function_path = "/home/avi/Desktop/robomason/ifc/IFC_functions.py"
 #####################################################################
 
 MARKER_DICT = {
-    "pick_up": 2,
-    "storage": 1,
+    "pick_up": 1,
+    "storage": 2,
     "construction": 0,
     "deconstruction": 3,
     "Foundation": 11, 
@@ -154,19 +154,12 @@ ELEMENT_MARKER_SIZE = 0.01
 WORKER_SQUARE_SIZE = 0.1
 
 
-camera_pos1 = [0.9408252239227295,
- -1.7368041477599085,
- 1.8473270575152796,
- -1.7449795208373011,
- -1.5089376608477991,
- -0.58673602739443]
-
-# drop_pos = [2.8157572746276855,
-#  -1.6738444767394007,
-#  1.7824528853045862,
-#  -1.640379091302389,
-#  -1.5882733503924769,
-#  -0.3120625654803675]
+camera_pos1 = [0.9474727511405945,
+ -1.7047339878477992,
+ 1.94969350496401,
+ -1.8798023662962855,
+ -1.5095894972430628,
+ -0.5794580618487757]
 
 drop_pos = [2.7558717727661133,
  -1.478697122340538,
@@ -175,19 +168,19 @@ drop_pos = [2.7558717727661133,
  -1.5904715696917933,
  -0.3027423063861292]
 
-dis_pos = [1.6085065603256226,
- -1.6148439846434535,
- 1.8089807669269007,
- -1.7913366756834925,
- -1.5477584044085901,
- -0.019556824360982716]
+dis_pos = [1.2044146060943604,
+ -1.6227685413756312,
+ 1.875298802052633,
+ -1.8967586956419886,
+ -1.5713561216937464,
+ -0.4224126974688929]
 
-camera_pos2 = [3.2383928298950195,
- -1.3273546260646363,
- 1.273280445729391,
- -1.5128439155272027,
- -1.5135439077960413,
- 0.18120500445365906]
+camera_pos2 = [3.3231146335601807,
+ -1.2728570264628907,
+ 1.3248704115497034,
+ -1.6234127483763636,
+ -1.5135791937457483,
+ 0.2665298879146576]
 
 #####################################################################
 ################# Construction related constants ####################
@@ -209,19 +202,23 @@ orientations = {
 
 # Element pickup related constants
 pickup_offsets = {
-    "foundation": {"x": -0.038, "y": -0.107, "z": -0.185},
-    "wall": {"x": -0.0015, "y": -0.087, "z": -0.182},  # Alternative z: -0.192
-    "floor": {"x": -0.038, "y": -0.0995, "z": -0.205}
+    "foundation": {"x": -0.037 , "y": -0.095, "z": 0.195},
+    "wall": {"x": -0.016, "y": -0.087, "z": 0.20},  
+    "floor": {"x": -0.050, "y": -0.105, "z": 0.195}
 }
 
 # Disassembly related constants
-dx = -0.15
-dy = -0.15
-d_offset = -0.01
-drops = np.array([[0, d_offset], [dx, d_offset] , [0, d_offset+dy] , [dx, d_offset+dy]])
+
+drops = np.array([
+    [ 0.06,        0.13      ],  # upper-right (n_place = 0)
+    [ 0.06,        0.01      ],  # lower-right (n_place = 1)
+    [-0.11,       0.13      ],   # upper-left  (n_place = 2)
+    [-0.11,       0.01],         # lower-left  (n_place = 3)
+])
+
 
 elements_gripper_width = {
-    "Wall": (None, 95),
+    "Wall": (None, 70),
     "Floor": (50, 20),
     "bathroom_module": (50, 0)
 }
@@ -238,6 +235,7 @@ bathroom_module_color_thresholds = {
     },
 }
 
+#Offsets for placing Bathroom parts
 # Dictionary for area thresholds
 bathroom_module_area_thresholds = {
     "min": 300,
@@ -246,52 +244,52 @@ bathroom_module_area_thresholds = {
 
 bathroom_module_radius = 0.025
 
-x_offest_bathroom_module_place_1 =  0.0025 # +ve is right
-y_offest_bathroom_module_place_1 = 0.0025
-z_offest_bathroom_module_place_1 = -0.21 #-0.22
+x_offest_bathroom_module_place_1 = -0.0025 # +ve is right
+y_offest_bathroom_module_place_1 = -0.0125
+z_offest_bathroom_module_place_1 = -0.22
 
-x_offest_bathroom_module_place_2 =  0.0025#-0.005
-y_offest_bathroom_module_place_2 = -0.005
-z_offest_bathroom_module_place_2 = -0.22 
+x_offest_bathroom_module_place_2 = 0.0005
+y_offest_bathroom_module_place_2 = -0.01
+z_offest_bathroom_module_place_2 = -0.232
 
 # Offsets for placing Foundation
 x_offset_fund_place = 0.0025
 y_offset_fund_place = 0.0 
-z_offset_fund_place = -0.005
+z_offset_fund_place = 0.20
 
 # Offsets for placing wall parts
-x_offset_wall_place = 0.00
-y_offset_wall_place = -0.0017  
-z_offset_wall_place = 0.0256  
-
-# Offsets for placing floor parts
-x_offset_floor_place = +0.0017
-y_offset_floor_place = 0.0085  
-z_offset_floor_place = -0.024412 
+x_offset_wall_place = 0.008
+y_offset_wall_place = -0.0045
+z_offset_wall_place = 0.21 
 
 # Fine-tuning offsets for wall placement (first set)
-x_offset_wall_place_finetune_1 = -0.0028
-y_offset_wall_place_finetune_1 = -0.005
-z_offset_wall_place_finetune_1 = 0.002
-
-# Fine-tuning offsets for floor placement (first set)
-x_offset_floor_place_finetune_1 = -0.005
-y_offset_floor_place_finetune_1 = -0.005
-z_offset_floor_place_finetune_1 = 0.0095
+x_offset_wall_place_finetune_1 = -0.01
+y_offset_wall_place_finetune_1 = 0.001
+z_offset_wall_place_finetune_1 = 0.005
 
 # Fine-tuning offsets for wall placement (second set)
-x_offset_wall_place_finetune_2 = -0.0035 #0.0
-y_offset_wall_place_finetune_2 = 0.0025 # positive would move it backwards
-z_offset_wall_place_finetune_2 = 0.002
+x_offset_wall_place_finetune_2 = -0.015  # <- bigger (right) integer for ifc2
+y_offset_wall_place_finetune_2 = -0.001 # positive would move it backwards
+z_offset_wall_place_finetune_2 = 0.078
+
+# Offsets for placing floor parts
+x_offset_floor_place = -0.02
+y_offset_floor_place = 0.0085  
+z_offset_floor_place = 0.272
+
+# Fine-tuning offsets for floor placement (first set)
+x_offset_floor_place_finetune_1 = 0.02
+y_offset_floor_place_finetune_1 = -0.013
+z_offset_floor_place_finetune_1 = 0
 
 # Fine-tuning offsets for floor placement (second set)
-x_offset_floor_place_finetune_2 = -0.0025
-y_offset_floor_place_finetune_2 = -0.0035
-z_offset_floor_place_finetune_2 = -0.0150
+x_offset_floor_place_finetune_2 = 0.02
+y_offset_floor_place_finetune_2 = -0.013
+z_offset_floor_place_finetune_2 = 0.072
 
 # Rotation adjustments
-wall_place_rotation_finetune = 0.022
-floor_place_rotation_1 = 0.015
+wall_place_rotation_finetune = 0.02
+floor_place_rotation_1 = 0.02
 floor_place_rotation_2 = 0.019
 
 

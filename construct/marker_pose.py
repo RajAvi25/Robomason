@@ -1,19 +1,17 @@
 # construct/marker_pose.py
 
 import numpy as np
-import cv2
 import time
 from math import tan
 from detections.marker_detector import MarkerDetector
-from system_config import *
-from construction_config import *
 from ui.mobility import *
 from .utils import calculate_distance
 import ui.MarkerDetectionLocalization as mdl
 from .utils import twist, wiggle
-from system_config import *
-from construction_config import *
 from ui.mobility import translate, moveJ
+
+from configs.system_config import *
+from configs.construction_config import *
 
 def mark_pos_ang(img, id_find):
     """

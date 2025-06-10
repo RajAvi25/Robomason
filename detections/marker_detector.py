@@ -1,8 +1,9 @@
 import cv2
 import numpy as np
 from detections.aruco_detection import find_aruco_markers
-from system_config import *
-from construction_config import *
+
+from configs.system_config import *
+from configs.construction_config import *
 
 class MarkerDetector:
     """

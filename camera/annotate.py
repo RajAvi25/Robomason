@@ -11,6 +11,21 @@ def showFrame(frame, scale=1.5):
     new_dimensions = (int(width * scale), int(height * scale))
     return cv2.resize(frame, new_dimensions, interpolation=cv2.INTER_LINEAR)
 
+def annotateTime(frame,
+                 position=(10, 30),
+                 font=cv2.FONT_HERSHEY_SIMPLEX,
+                 fontScale=1.0,
+                 color=(255, 255, 255),
+                 thickness=2):
+    """
+    Draws a timestamp (YYYY-MM-DD HH:MM:SS) in the top-left corner of the frame.
+    :param frame: image to annotate in-place
+    :param position: bottom-left corner of the text (x, y)
+    :param font, fontScale, color, thickness: styling parameters
+    """
+    ts = time.strftime('%Y-%m-%d %H:%M:%S')
+    cv2.putText(frame, ts, position, font, fontScale, color, thickness, cv2.LINE_AA)
+    return frame
 
 def findArucoMarkers(img, markerSize=6, totalMarkers=250, draw=True):
     """
@@ -117,7 +132,10 @@ def liveFeedAruco(frame_handler):
             frame_copy = frame.copy()
             bboxs, ids = findArucoMarkers(frame)
 
-            # Always draw danger zone
+            # Add timestamp
+            annotateTime(frame_copy)
+
+            # Draw danger zone
             annotateDangerZone(frame_copy,True)  # Set to True to see the red tint. 
 
             # If any markers are found, annotate them

@@ -1,7 +1,7 @@
 import json
 import subprocess
 import numpy as np
-from construction_config import python_executable_IFC ,IFC_function_path
+from configs.construction_config import python_executable_IFC ,IFC_function_path
 
 def IFC_loaded_sorted(*script_args):
     command = f"{python_executable_IFC} {IFC_function_path}"

@@ -1,0 +1,8 @@
+# ~/Desktop/robomason/setup.py
+from setuptools import setup, find_packages
+
+setup(
+    name="robomason",
+    version="0.1",
+    packages=find_packages(),
+)

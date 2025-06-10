@@ -2,8 +2,8 @@
 import time
 from robot_controller.globals import DETECTION_STATUS, marker_stop_flag, prompt_user_lock
 from detections.aruco_detection import find_aruco_markers
-from system_config import *
-from construction_config import *
+from configs.system_config import *
+from configs.construction_config import *
 
 def markerTrigger(frame_handler):
     global DETECTION_STATUS

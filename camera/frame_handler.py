@@ -61,12 +61,37 @@ class FrameHandler:
             print(f"[FrameHandler] WebSocket connection error: {e}")
             self.stop()
 
+    # def _on_open(self, ws):
+    #     print("[FrameHandler] WebSocket connection opened.")
+    #     if not self.is_sender:
+    #         subscribe_msg = {"op": "subscribe", "topic": self.topic, "qos": {"durability": "volatile", "reliability": "reliable", "depth": 10}}
+    #         ws.send(json.dumps(subscribe_msg))
+    #         print(f"[FrameHandler] Subscribed to topic: {self.topic}")
+
     def _on_open(self, ws):
         print("[FrameHandler] WebSocket connection opened.")
+
+        advertise_msg = {
+            "op": "advertise",
+            "topic": self.topic,
+            "type": "sensor_msgs/CompressedImage"
+        }
+        ws.send(json.dumps(advertise_msg))
+        print(f"[FrameHandler] Advertised topic: {self.topic}")
+
         if not self.is_sender:
-            subscribe_msg = {"op": "subscribe", "topic": self.topic, "qos": {"durability": "volatile", "reliability": "reliable", "depth": 10}}
+            subscribe_msg = {
+                "op": "subscribe",
+                "topic": self.topic,
+                "qos": {
+                    "durability": "volatile",
+                    "reliability": "reliable",
+                    "depth": 10
+                }
+            }
             ws.send(json.dumps(subscribe_msg))
             print(f"[FrameHandler] Subscribed to topic: {self.topic}")
+
 
     def _on_message(self, ws, message):
         data = json.loads(message)
