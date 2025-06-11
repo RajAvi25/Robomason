@@ -1,3 +1,4 @@
+#plotting/gui.py
 from PyQt5.QtWidgets import QMainWindow, QLabel, QWidget, QGridLayout, QScrollArea, QHBoxLayout, QVBoxLayout, QSizePolicy
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap
@@ -138,7 +139,7 @@ class MainWindow(QMainWindow):
         self.timer.start(100)
 
     # def _on_timer(self):
-    #     # 1) dispatch *and* remember the last packet
+    #     # 1) dispatch incoming data to workers…
     #     last_pkt = None
     #     while not self.zmq_data_queue.empty():
     #         pkt = self.zmq_data_queue.get_nowait()
@@ -146,19 +147,24 @@ class MainWindow(QMainWindow):
     #         for q in self.plot_input_queues.values():
     #             q.put(pkt)
 
-    #     # 2) update status bar if we saw anything
-    #     if last_pkt is not None:
-    #         el = normalize_element_name(last_pkt.get('element'))
-    #         st = last_pkt.get('state', '')
-    #         self.status_label.setText(f"Element: {el}   |   State: {st}")
-
-    #     # 3) update each view from its output queue
+    #     # 2) now update each view *and* capture its metadata
+    #     current_meta = None
     #     for view, q in self.plot_output_queues.items():
+    #         last_img = None
+    #         # drain everything in this view’s queue, keep only the *latest*
     #         while not q.empty():
-    #             img = q.get_nowait()
-    #             pix = QPixmap.fromImage(QImage.fromData(img))
+    #             element, state, img = q.get_nowait()
+    #             last_img = img
+    #             current_meta = (element, state)
+
+    #         if last_img is not None:
+    #             pix = QPixmap.fromImage(QImage.fromData(last_img))
     #             self.labels[view].setPixmap(pix)
 
+    #     # 3) finally update the status bar from the metadata of the frame you just showed
+    #     if current_meta is not None:
+    #         el, st = current_meta
+    #         self.status_label.setText(f"Element: {el}   |   State: {st}")
     def _on_timer(self):
         # 1) dispatch incoming data to workers…
         last_pkt = None
@@ -168,24 +174,37 @@ class MainWindow(QMainWindow):
             for q in self.plot_input_queues.values():
                 q.put(pkt)
 
-        # 2) now update each view *and* capture its metadata
+        # 2) update each view & capture its metadata
         current_meta = None
         for view, q in self.plot_output_queues.items():
-            last_img = None
-            # drain everything in this view’s queue, keep only the *latest*
+            # keep only the latest packet in this queue
+            item = None
             while not q.empty():
-                element, state, img = q.get_nowait()
-                last_img = img
-                current_meta = (element, state)
+                item = q.get_nowait()
+            if item is None:
+                continue
 
-            if last_img is not None:
-                pix = QPixmap.fromImage(QImage.fromData(last_img))
-                self.labels[view].setPixmap(pix)
+            element, state = item[0], item[1]
 
-        # 3) finally update the status bar from the metadata of the frame you just showed
+            # old PNG path: (element, state, png_bytes)
+            if len(item) == 3:
+                img_bytes = item[2]
+                pix = QPixmap.fromImage(QImage.fromData(img_bytes))
+            # new raw-RGBA path: (element, state, raw_bytes, w, h)
+            else:
+                raw_bytes, w, h = item[2], item[3], item[4]
+                img = QImage(raw_bytes, w, h, QImage.Format_RGBA8888)
+                pix = QPixmap.fromImage(img)
+
+            self.labels[view].setPixmap(pix)
+            current_meta = (element, state)
+
+        # 3) update status bar from last shown frame
         if current_meta is not None:
             el, st = current_meta
             self.status_label.setText(f"Element: {el}   |   State: {st}")
+
+
 
 
 

@@ -217,7 +217,8 @@ def connectPlottingserver():
     global plotting_socket
     context = zmq.Context()
     plotting_socket = context.socket(zmq.PUB)
-    plotting_socket.bind("tcp://127.0.0.1:5555")
+    # plotting_socket.bind("tcp://127.0.0.1:5555")
+    plotting_socket.bind("ipc:///tmp/plotter.ipc")
     time.sleep(0.25)
 
 def connectTrackerserver():

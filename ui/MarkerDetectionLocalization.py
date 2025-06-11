@@ -39,20 +39,38 @@ robot_data_lock = threading.Lock()
 orientation = np.eye(3)
 translation = np.zeros(3)
 
+# def robot_data_listener():
+#     """
+#     Listens on tcp://127.0.0.1:5560 for robot data packets published by the main program.
+#     Each packet is expected to be a JSON dict with keys "joints" and "orientation".
+#     """
+#     context = zmq.Context()
+#     sub_socket = context.socket(zmq.SUB)
+#     sub_socket.connect("tcp://127.0.0.1:5560")
+#     sub_socket.setsockopt_string(zmq.SUBSCRIBE, "")
+#     print("Robot data listener started on tcp://127.0.0.1:5560...")
+#     while True:
+#         try:
+#             data_packet = sub_socket.recv_json()
+#             # print("Received data_packet:", data_packet)
+#             with robot_data_lock:
+#                 latest_robot_data.update(data_packet)
+#         except Exception as e:
+#             print(f"Error in robot data listener: {e}")
+
 def robot_data_listener():
     """
-    Listens on tcp://127.0.0.1:5560 for robot data packets published by the main program.
+    Listens on ipc:///tmp/robot.ipc for robot data packets published by the main program.
     Each packet is expected to be a JSON dict with keys "joints" and "orientation".
     """
-    context = zmq.Context()
+    context = zmq.Context.instance()
     sub_socket = context.socket(zmq.SUB)
-    sub_socket.connect("tcp://127.0.0.1:5560")
+    sub_socket.connect("ipc:///tmp/robot.ipc")
     sub_socket.setsockopt_string(zmq.SUBSCRIBE, "")
-    print("Robot data listener started on tcp://127.0.0.1:5560...")
+    print("Robot data listener started on ipc:///tmp/robot.ipc...")
     while True:
         try:
             data_packet = sub_socket.recv_json()
-            # print("Received data_packet:", data_packet)
             with robot_data_lock:
                 latest_robot_data.update(data_packet)
         except Exception as e:
