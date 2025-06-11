@@ -6,6 +6,8 @@ import os
 from datetime import datetime
 import msgpack
 import json
+import glob
+from pathlib import Path
 import threading
 from threading import Lock
 from camera.frame_handler import FrameHandler
@@ -101,7 +103,7 @@ def get_current_packet():
         else:
             return None
         
-def save_failed_run(run_phase,block_list, pl_pos):
+def save_failed_run(run_phase,block_list, pl_pos,img):
     """
     Grabs all current tracking packets via get_tracking_packets(),
     then saves them (plus metadata) into a newly created subfolder under
@@ -113,28 +115,39 @@ def save_failed_run(run_phase,block_list, pl_pos):
     # 1) Retrieve a copy of the packets
     packets = get_tracking_packets(clear_after_retrieval=False)
     
-    # 2) Ensure base directory exists
-    base_dir = os.path.join("_workingdata", "_siteinfo", "_failedruns")
-    os.makedirs(base_dir, exist_ok=True)
+    # # 2) Ensure base directory exists
+    # base_dir = os.path.join("_workingdata", "_siteinfo", "_failedruns")
+    # os.makedirs(base_dir, exist_ok=True)
     
-    # 3) Find existing numeric subfolders and compute next index
-    existing_indices = []
-    for name in os.listdir(base_dir):
-        full_path = os.path.join(base_dir, name)
-        if os.path.isdir(full_path) and name.isdigit():
-            try:
-                existing_indices.append(int(name))
-            except ValueError:
-                pass
+    # # 3) Find existing numeric subfolders and compute next index
+    # existing_indices = []
+    # for name in os.listdir(base_dir):
+    #     full_path = os.path.join(base_dir, name)
+    #     if os.path.isdir(full_path) and name.isdigit():
+    #         try:
+    #             existing_indices.append(int(name))
+    #         except ValueError:
+    #             pass
     
-    if existing_indices:
-        next_index = max(existing_indices) + 1
-    else:
-        next_index = 0
+    # if existing_indices:
+    #     next_index = max(existing_indices) + 1
+    # else:
+    #     next_index = 0
     
-    folder_name = f"{next_index:02d}"  # zero-pad to at least two digits
-    run_dir = os.path.join(base_dir, folder_name)
-    os.makedirs(run_dir, exist_ok=False)
+    # folder_name = f"{next_index:02d}"  # zero-pad to at least two digits
+    # run_dir = os.path.join(base_dir, folder_name)
+    # os.makedirs(run_dir, exist_ok=False)
+
+    root = Path("_workingdata/_siteinfo/_failedruns").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+
+    # find next index
+    existing = [int(p.name) for p in root.iterdir()
+                if p.is_dir() and p.name.isdigit()]
+    next_idx = max(existing)+1 if existing else 0
+
+    run_dir = root / f"{next_idx:02d}"
+    run_dir.mkdir(exist_ok=False)
     
     # 4) Build the JSON payload
     payload = {
@@ -148,28 +161,25 @@ def save_failed_run(run_phase,block_list, pl_pos):
     ts_str = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     
     # 5) Write out a single JSON file in the new run_dir
-    filename = f"{folder_name}--{run_phase}--{ts_str}.json"
-    out_path = os.path.join(run_dir, filename)
-    with open(out_path, "w") as f:
-        json.dump(payload, f, indent=2)
+    filename = f"{next_idx:02d}--{run_phase}--{ts_str}.json"
+    (run_dir / filename).write_text(json.dumps(payload, indent=2))
+    # out_path = os.path.join(run_dir, filename)
+    # with open(out_path, "w") as f:
+    #     json.dump(payload, f, indent=2)
 
-    # image_filename = f"{folder_name}--{run_phase}--{ts_str}.png"
-    # image_path = os.path.join(run_dir, image_filename)
-    # cv2.imwrite(image_path, img)
+    image_filename = f"{next_idx:02d}--{run_phase}--{ts_str}.png"
+    image_path = os.path.join(run_dir, image_filename)
+    cv2.imwrite(image_path, img)
     
     print(f"Saved failed run to: {run_dir}")
     return run_dir
 
 def get_saved_paths(base_dir, selection):
-    """
-    Args:
-        base_dir (str): e.g. "_workingdata/_siteinfo/_failedruns" or your test_base
-        selection (str): "NN" or "NN-MM"
-    Returns:
-        List[str]: one or more JSON paths, in ascending index order
-    Raises:
-        ValueError on bad input, missing folder, or no JSON files
-    """
+    base = Path(base_dir).resolve()
+    # strip off a trailing run-folder if passed accidentally
+    if base.name.isdigit() and (base.parent.name == "_failedruns"):
+        base = base.parent
+    
     # parse selection
     if "-" in selection:
         start_str, end_str = selection.split("-", 1)
@@ -180,7 +190,7 @@ def get_saved_paths(base_dir, selection):
             start, end = end, start
     else:
         if not selection.isdigit():
-            raise ValueError(f"Invalid index '{selection}'. Use '02'.")
+            raise ValueError(f"Invalid index '{selection}'.")
         start = end = int(selection)
 
     paths = []
@@ -338,7 +348,7 @@ def initPlotting():
 # ----------------- child process (runs Tk) -----------------
 def _board_process(q_in: mp.Queue, q_out: mp.Queue, bg: str = "white"):
     root = tk.Tk()
-    root.title("✦ Question Board ✦")
+    root.title("Robomason")
     root.configure(bg=bg)
     root.geometry("400x250")
     root.resizable(False, False)
@@ -346,7 +356,7 @@ def _board_process(q_in: mp.Queue, q_out: mp.Queue, bg: str = "white"):
     # Permanent header
     header = tk.Label(
         root,
-        text="📝 Question Board",
+        text="Question board",
         font=("Helvetica", 16, "bold"),
         bg=bg,
         fg="#333"

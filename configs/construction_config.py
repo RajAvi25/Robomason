@@ -208,14 +208,12 @@ pickup_offsets = {
 }
 
 # Disassembly related constants
-
 drops = np.array([
-    [ 0.06,        0.13      ],  # upper-right (n_place = 0)
-    [ 0.06,        0.01      ],  # lower-right (n_place = 1)
-    [-0.11,       0.13      ],   # upper-left  (n_place = 2)
-    [-0.11,       0.01],         # lower-left  (n_place = 3)
+    [ 0.1,        0.17      ],  # upper-right (n_place = 0)
+    [0.1,        0.05      ],  # upper-left  (n_place = 1)
+    [-0.15,       0.17       ],  # lower-right (n_place = 2)
+    [-0.12,      0.05],        # lower-left  (n_place = 3)
 ])
-
 
 elements_gripper_width = {
     "Wall": (None, 70),

@@ -196,18 +196,3 @@ __all__ = [
  
 ]
 
-#Example use:
-# actual_position = {
-#     5: (55,0),
-#     6:(50,-5)
-# } 
-# test_number = 1
-# _ = CEP50_plot(all_data, actual_position,True,False,test_number)
-
-# specific_ids = {15}  # Use a set for efficiency
-# filtered_sorted_data = sorted(
-#     [item for item in all_data if item['ID'] in specific_ids],
-#     key=lambda x: x['coordinates']  # Sort by coordinates
-# )
-# if filtered_sorted_data != []:
-#      _ = CEP50_plot(filtered_sorted_data, actual_position,True,True,test_number)
