@@ -138,33 +138,6 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self._on_timer)
         self.timer.start(100)
 
-    # def _on_timer(self):
-    #     # 1) dispatch incoming data to workers…
-    #     last_pkt = None
-    #     while not self.zmq_data_queue.empty():
-    #         pkt = self.zmq_data_queue.get_nowait()
-    #         last_pkt = pkt
-    #         for q in self.plot_input_queues.values():
-    #             q.put(pkt)
-
-    #     # 2) now update each view *and* capture its metadata
-    #     current_meta = None
-    #     for view, q in self.plot_output_queues.items():
-    #         last_img = None
-    #         # drain everything in this view’s queue, keep only the *latest*
-    #         while not q.empty():
-    #             element, state, img = q.get_nowait()
-    #             last_img = img
-    #             current_meta = (element, state)
-
-    #         if last_img is not None:
-    #             pix = QPixmap.fromImage(QImage.fromData(last_img))
-    #             self.labels[view].setPixmap(pix)
-
-    #     # 3) finally update the status bar from the metadata of the frame you just showed
-    #     if current_meta is not None:
-    #         el, st = current_meta
-    #         self.status_label.setText(f"Element: {el}   |   State: {st}")
     def _on_timer(self):
         # 1) dispatch incoming data to workers…
         last_pkt = None

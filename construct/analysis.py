@@ -15,6 +15,11 @@ from shapely.geometry import Polygon
 from configs.system_config import *
 from configs.construction_config import *
 
+from environment.worker import draw_worker, legend_handles as _legend_handles
+from environment.robot import draw_robot, forward_kinematics
+from environment import Environment         
+_ENV = Environment()
+
 display_robot = True
 
 def process_hazard_events(data):
@@ -672,227 +677,75 @@ def workerdetection_analysis(data):
     # 4. Create the DataFrame.
     df = pd.DataFrame(rows)
     return df
-
-# class ElementResolver:
-#     def __init__(self):
-#         self.wall_count   = 0
-#         self.floor_count  = 0
-#         self.toilet_count = 0
-
-#     def resolve_element_name(self, raw_element):
-#         raw_element = raw_element.lower().strip()
-#         elements = {
-#             "foundation":       "Foundation",
-#             "scanning site":    "Scanning site",
-#             "searching element":"Searching element",
-#             "wall":             "Wall",
-#             "floor":            "Floor",
-#             "toilet":           "Bathroom module"
-#         }
-#         for key, label in elements.items():
-#             if key in raw_element:
-#                 if key in ["scanning site", "searching element", "foundation"]:
-#                     return label
-#                 if key == "wall":
-#                     self.wall_count = min(self.wall_count + 1, 2)
-#                     return f"{label} {self.wall_count}"
-#                 if key == "floor":
-#                     self.floor_count = min(self.floor_count + 1, 2)
-#                     return f"{label} {self.floor_count}"
-#                 if key == "toilet":
-#                     self.toilet_count = min(self.toilet_count + 1, 3)
-#                     return f"{label} {self.toilet_count}"
-#         return "default"
     
-def transformation_matrix(a, alpha, d, theta):
-    """Return the individual transformation matrix for each joint."""
-    return np.array([
-        [np.cos(theta), -np.sin(theta)*np.cos(alpha),  np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
-        [np.sin(theta),  np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
-        [0,              np.sin(alpha),               np.cos(alpha),               d],
-        [0,              0,                           0,                           1]
-    ])
+# def transformation_matrix(a, alpha, d, theta):
+#     """Return the individual transformation matrix for each joint."""
+#     return np.array([
+#         [np.cos(theta), -np.sin(theta)*np.cos(alpha),  np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
+#         [np.sin(theta),  np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
+#         [0,              np.sin(alpha),               np.cos(alpha),               d],
+#         [0,              0,                           0,                           1]
+#     ])
 
-def forward_kinematics(joint_angles):
-    """Compute all UR5 joint positions in 3D (end of each link)."""
-    translation = np.array([0.02099, 0.34301, -0.30002])  # Same offset as your real-time code
-    positions = []
+# def forward_kinematics(joint_angles):
+#     """Compute all UR5 joint positions in 3D (end of each link)."""
+#     translation = np.array([0.02099, 0.34301, -0.30002])  # Same offset as your real-time code
+#     positions = []
 
-    # Start: the base of joint0 is ~ (0,0,0), but for plotting we add the same translation
-    # The user sometimes anchors the first link at z=DH_params[0]['d'], but let's
-    # keep it consistent with your real-time code's approach.
-    T = np.eye(4)
-    for i, params in enumerate(DH_params):
-        # For each joint, add the local transform
-        theta = params['theta'] + joint_angles[i]
-        T_joint = transformation_matrix(params['a'], params['alpha'], params['d'], theta)
-        T = T @ T_joint
-        # The x,y,z of this joint:
-        x, y, z = T[0, 3], T[1, 3], T[2, 3]
-        positions.append(np.array([x, y, z]) + translation)
+#     # Start: the base of joint0 is ~ (0,0,0), but for plotting we add the same translation
+#     # The user sometimes anchors the first link at z=DH_params[0]['d'], but let's
+#     # keep it consistent with your real-time code's approach.
+#     T = np.eye(4)
+#     for i, params in enumerate(DH_params):
+#         # For each joint, add the local transform
+#         theta = params['theta'] + joint_angles[i]
+#         T_joint = transformation_matrix(params['a'], params['alpha'], params['d'], theta)
+#         T = T @ T_joint
+#         # The x,y,z of this joint:
+#         x, y, z = T[0, 3], T[1, 3], T[2, 3]
+#         positions.append(np.array([x, y, z]) + translation)
 
-    return positions
-
-# def create_custom_legend_handles():
-#     """
-#     Build a list of legend handles (Line2D objects) for each
-#     element + state combination we want to display.
-#     """
-#     legend_handles = []
-
-#     # List out the elements you want to show in the legend:
-#     elements = [
-#         "Scanning site",
-#         "Foundation",
-#         "Searching element",
-#         "Wall 1",
-#         "Wall 2",
-#         "Floor 1",
-#         "Floor 2",
-#         "Bathroom module 1",
-#         "Bathroom module 2",
-#         "Bathroom module 3"
-#     ]
-
-#     # The states we'll differentiate by line thickness/alpha
-#     states = ["grab", "place"]
-
-#     for element in elements:
-#         color_for_element = ELEMENT_COLORS.get(element, "black")
-
-#         for st in states:
-#             lw    = line_widths.get(st, 2.0)
-#             alpha = line_alpha.get(st, 1.0)
-#             # We'll just keep the same line style '-'
-#             linestyle = line_styles.get(st, '-')
-
-#             # Build a label, e.g. "Wall 1 (grab)" or "Floor 2 (place)"
-#             label_text = f"{element} ({st})"
-
-#             line = Line2D(
-#                 [0], [0],               # dummy data
-#                 color=color_for_element,
-#                 lw=lw,
-#                 linestyle=linestyle,
-#                 alpha=alpha,
-#                 label=label_text
-#             )
-#             legend_handles.append(line)
-
-#     return legend_handles
+#     return positions
 
 def add_environment_3d(ax):
-    """Draw ground plane & environment boxes in 3D."""
-    xx, yy = np.meshgrid(
-        np.linspace(x_limits[0], x_limits[1], 10),
-        np.linspace(y_limits[0], y_limits[1], 10)
-    )
-    zz = np.full_like(xx, z_level)
-    ax.plot_surface(xx, yy, zz, color='peru', alpha=0.3)
-
-    box_positions = [
-        (-0.22, -0.13),  # pickup site
-        (0.5802, 0.2528),    # bathroom module site
-        (0.5802, 0.5669),    # construction site
-        (0.242, -0.14)     # deconstruction site
-    ]
-    box_dims = [
-        (29.5/100, 21/100),
-        (21/100, 29.5/100),
-        (21/100, 29.5/100),
-        (45/100, 29.5/100)
-    ]
-    box_color = 'darkblue'
-    box_alpha = 0.5
-
-    for (x_center, y_center), dims in zip(box_positions, box_dims):
-        width, height = dims
-        rect_xs = [
-            x_center - width/2,
-            x_center + width/2,
-            x_center + width/2,
-            x_center - width/2,
-            x_center - width/2
-        ]
-        rect_ys = [
-            y_center - height/2,
-            y_center - height/2,
-            y_center + height/2,
-            y_center + height/2,
-            y_center - height/2
-        ]
-        rect_zs = [z_level]*5
-        verts = [list(zip(rect_xs, rect_ys, rect_zs))]
-        poly = Poly3DCollection(verts, facecolors=box_color, alpha=box_alpha, edgecolors='k')
-        ax.add_collection3d(poly)
+    _ENV.draw_environment(ax, view="3d")
 
 def add_environment_2d_top(ax):
-    """Draw ground rectangle & boxes in top view (X vs. Y)."""
-    ground_width  = x_limits[1] - x_limits[0]
-    ground_height = y_limits[1] - y_limits[0]
-    ax.add_patch(
-        plt.Rectangle((x_limits[0], y_limits[0]), ground_width, ground_height,
-                      facecolor='peru', alpha=0.3)
-    )
+    _ENV.draw_environment(ax, view="top")
 
-    box_positions = [
-        (-0.22, -0.13),  # pickup site
-        (0.5802, 0.2528),    # bathroom module site  #Scotty
-        (0.5802, 0.5669),    # construction site
-        (0.242, -0.14)     # deconstruction site
-    ]
+# def plot_robot_3d(ax, joint_angles, color='k'):
+#     """Draw the robot in 3D on the given Axes3D object."""
+#     joint_positions = forward_kinematics(joint_angles)
 
-    box_dims = [
-        (29.5/100, 21/100),
-        (21/100, 29.5/100),
-        (21/100, 29.5/100),
-        (45/100, 29.5/100)
-    ]
-    box_color = 'darkblue'
-    box_alpha = 0.5
+#     # Optionally anchor the very bottom for aesthetic reasons
+#     ground_anchor = np.array([0.0, 0.34301, -0.2])
+#     joint_positions = [ground_anchor] + joint_positions
 
-    for (x_center, y_center), dims in zip(box_positions, box_dims):
-        w, h = dims
-        x_left   = x_center - w/2
-        y_bottom = y_center - h/2
-        ax.add_patch(
-            plt.Rectangle((x_left, y_bottom), w, h,
-                          facecolor=box_color, alpha=box_alpha, edgecolor='k')
-        )
+#     xs = [p[0] for p in joint_positions]
+#     ys = [p[1] for p in joint_positions]
+#     zs = [p[2] for p in joint_positions]
+#     ax.plot(xs, ys, zs, marker='o', color=color, linestyle='-', linewidth=2)
 
-def plot_robot_3d(ax, joint_angles, color='k'):
-    """Draw the robot in 3D on the given Axes3D object."""
-    joint_positions = forward_kinematics(joint_angles)
+# def plot_robot_2d(ax, joint_angles, view='top', color='k'):
+#     """Draw the robot in 2D (top/front/side) on the given Matplotlib Axes."""
+#     joint_positions = forward_kinematics(joint_angles)
 
-    # Optionally anchor the very bottom for aesthetic reasons
-    ground_anchor = np.array([0.0, 0.34301, -0.2])
-    joint_positions = [ground_anchor] + joint_positions
+#     # Optionally anchor the base for aesthetic reasons:
+#     ground_anchor = np.array([0.0, 0.34301, -0.105])
+#     joint_positions = [ground_anchor] + joint_positions
 
-    xs = [p[0] for p in joint_positions]
-    ys = [p[1] for p in joint_positions]
-    zs = [p[2] for p in joint_positions]
-    ax.plot(xs, ys, zs, marker='o', color=color, linestyle='-', linewidth=2)
-
-def plot_robot_2d(ax, joint_angles, view='top', color='k'):
-    """Draw the robot in 2D (top/front/side) on the given Matplotlib Axes."""
-    joint_positions = forward_kinematics(joint_angles)
-
-    # Optionally anchor the base for aesthetic reasons:
-    ground_anchor = np.array([0.0, 0.34301, -0.105])
-    joint_positions = [ground_anchor] + joint_positions
-
-    if view == 'top':
-        xs = [p[0] for p in joint_positions]
-        ys = [p[1] for p in joint_positions]
-        ax.plot(xs, ys, marker='o', color=color, linestyle='-', linewidth=2)
-    elif view == 'front':
-        xs = [p[0] for p in joint_positions]
-        zs = [p[2] for p in joint_positions]
-        ax.plot(xs, zs, marker='o', color=color, linestyle='-', linewidth=2)
-    elif view == 'side':
-        ys = [p[1] for p in joint_positions]
-        zs = [p[2] for p in joint_positions]
-        ax.plot(ys, zs, marker='o', color=color, linestyle='-', linewidth=2)
+#     if view == 'top':
+#         xs = [p[0] for p in joint_positions]
+#         ys = [p[1] for p in joint_positions]
+#         ax.plot(xs, ys, marker='o', color=color, linestyle='-', linewidth=2)
+#     elif view == 'front':
+#         xs = [p[0] for p in joint_positions]
+#         zs = [p[2] for p in joint_positions]
+#         ax.plot(xs, zs, marker='o', color=color, linestyle='-', linewidth=2)
+#     elif view == 'side':
+#         ys = [p[1] for p in joint_positions]
+#         zs = [p[2] for p in joint_positions]
+#         ax.plot(ys, zs, marker='o', color=color, linestyle='-', linewidth=2)
 
 def normalize_element_name(element):
     """
@@ -1053,7 +906,8 @@ def plot_complete_data(data, title, construction_type="assembly", display_robot=
     ax_3d.set_zlim(z_limits)
     ax_3d.set_title(f"{title} trajectory (Isometric view)")
     if display_robot and last_joints is not None:
-        plot_robot_3d(ax_3d, last_joints, color='k')
+        draw_robot(ax_3d, last_joints, view='3d', color='k')
+        # plot_robot_3d(ax_3d, last_joints, color='k')
     ax_3d.legend(integrated_handles, integrated_labels, loc="upper left", bbox_to_anchor=(1.02, 1))
     fig_3d.subplots_adjust(right=0.8)
     figures.append(fig_3d)
@@ -1070,7 +924,8 @@ def plot_complete_data(data, title, construction_type="assembly", display_robot=
     ax_top.set_ylim(y_limits)
     ax_top.set_title(f"{title} trajectory (Plan view)")
     if display_robot and last_joints is not None:
-        plot_robot_2d(ax_top, last_joints, view='top', color='k')
+        # plot_robot_2d(ax_top, last_joints, view='top', color='k')
+        draw_robot(ax_top, last_joints, view='top', color='k')
     ax_top.legend(integrated_handles, integrated_labels, loc="upper left", bbox_to_anchor=(1.02, 1))
     fig_top.subplots_adjust(right=0.8)
     figures.append(fig_top)
@@ -1085,6 +940,8 @@ def plot_complete_data(data, title, construction_type="assembly", display_robot=
     ax_side.set_xlim(y_limits)
     ax_side.set_ylim(z_limits)
     ax_side.set_title(f"{title} trajectory (Side view)")
+    # if display_robot and last_joints is not None:
+        # draw_robot(ax_top, last_joints, view='side', color='k')
     ax_side.legend(integrated_handles, integrated_labels, loc="upper left", bbox_to_anchor=(1.02, 1))
     fig_side.subplots_adjust(right=0.8)
     figures.append(fig_side)
@@ -1099,6 +956,8 @@ def plot_complete_data(data, title, construction_type="assembly", display_robot=
     ax_front.set_xlim(x_limits)
     ax_front.set_ylim(z_limits)
     ax_front.set_title(f"{title} trajectory (Front view)")
+    # if display_robot and last_joints is not None:
+        # draw_robot(ax_top, last_joints, view='front', color='k')
     ax_front.legend(integrated_handles, integrated_labels, loc="upper left", bbox_to_anchor=(1.02, 1))
     fig_front.subplots_adjust(right=0.8)
     figures.append(fig_front)
@@ -1108,192 +967,69 @@ def plot_complete_data(data, title, construction_type="assembly", display_robot=
             plt.close(fig)
     return figures
 
-def plot_workers(worker_data, plot_3d=True):
+def plot_workers(worker_data, plot_3d: bool = True):
     """
-    Plot worker locations in both a 3D view and a 2D top view.
-    
-    Parameters:
-        worker_data (list): A list of dictionaries. Each dict should contain at least:
-            - 'worker spotted' (bool): True if a worker was detected.
-            - 'worker id': an integer id.
-            - 'worker coordinates': a list or tuple with at least three numbers [x, y, z].
-        show (bool): If True, calls plt.show() to display the figures.
-        plot_3d (bool): If True, creates a 3D view in addition to the 2D view.
-    
-    Returns:
-        tuple: (fig3d, fig2d) matplotlib Figure objects for the 3D and 2D views.
-               If plot_3d is False, fig3d will be None.
-    """   
-    # --- PROCESS WORKER DATA ---
+    Visualise all detected workers in one plan view (always) and one 3-D
+    isometric view (optional).
+
+    Parameters
+    ----------
+    worker_data : list[dict]
+        Each dict must contain
+            'worker spotted' : bool
+            'worker id'      : int
+            'worker coordinates' : [x, y, z]
+    plot_3d : bool, default True
+        If False, only the 2-D figure is returned.
+
+    Returns
+    -------
+    tuple(matplotlib.figure.Figure | None, matplotlib.figure.Figure)
+        (fig3d, fig2d).  fig3d is None when plot_3d=False.
+    """
+    # ── 1) extract clean coordinates ───────────────────────────────────
     workers = []
-    for entry in worker_data:
-        if (entry.get('worker spotted', False) and
-            entry.get('worker id') is not None and
-            entry.get('worker coordinates')):
-            
-            worker_id = entry['worker id']
+    for pkt in worker_data:
+        if pkt.get("worker spotted") and pkt.get("worker id") is not None:
             try:
-                # Convert coordinates to float and override z with z_level for consistency
-                x, y, _ = map(float, entry['worker coordinates'])
+                x, y, _ = map(float, pkt["worker coordinates"])
             except Exception:
                 continue
-            workers.append((worker_id, x, y, z_level))
-    
-    # Build a dictionary of unique worker styles for the legend
-    unique_worker_styles = {}
-    for (wid, _, _, _) in workers:
-        if wid not in unique_worker_styles:
-            marker = worker_marker_styles.get(wid, 'x')
-            color = WORKER_COLORS.get(wid, 'black')
-            unique_worker_styles[wid] = (marker, color)
-    
-    # Create legend handles and labels
-    legend_handles = []
-    legend_labels = []
-    for wid, (marker, color) in unique_worker_styles.items():
-        label = f"Worker {wid}"
-        
-        if marker == 'zone':
-            # Use a rectangular patch in the legend
-            handle = Patch(facecolor=color, edgecolor=color, alpha=0.7)
-        else:
-            # For unfilled markers like 'x', use markeredgecolor
-            handle = Line2D(
-                [0], [0],
-                marker=marker,
-                color='none',            # no connecting line in legend
-                markeredgecolor=color,   # color for 'x' lines
-                markerfacecolor=color,   # if you had a filled marker, it would fill with this color
-                markersize=8,
-                linewidth=0
-            )
-        
-        legend_handles.append(handle)
-        legend_labels.append(label)
-    
-    # --- CREATE 2D TOP VIEW PLOT ---
+            workers.append((pkt["worker id"], x, y, z_level))
+
+    # ── 2) legend (shared style) ───────────────────────────────────────
+    legend_handles, legend_labels = _legend_handles()
+
+    # ── 3) 2-D plan view ───────────────────────────────────────────────
     fig2d = plt.figure()
-    ax2d = fig2d.add_subplot(111)
-    ax2d.set_xlabel("X [m]")
-    ax2d.set_ylabel("Y [m]")
-    ax2d.set_xlim(x_limits)
-    ax2d.set_ylim(y_limits)
-    
-    # Draw ground rectangle
-    ground_width = x_limits[1] - x_limits[0]
-    ground_height = y_limits[1] - y_limits[0]
-    ground_rect = Rectangle(
-        (x_limits[0], y_limits[0]),
-        ground_width,
-        ground_height,
-        facecolor='peru',
-        alpha=0.3
-    )
-    ax2d.add_patch(ground_rect)
-    
-    # Draw environment boxes in 2D
-    for (x_center, y_center), dims in zip(box_positions, box_dims):
-        w, h = dims
-        x_left = x_center - w / 2
-        y_bottom = y_center - h / 2
-        box_rect = Rectangle(
-            (x_left, y_bottom),
-            w,
-            h,
-            facecolor=box_color,
-            alpha=box_alpha,
-            edgecolor='k'
-        )
-        ax2d.add_patch(box_rect)
-    
-    # Plot each worker on the 2D axes
-    for (wid, wx, wy, _) in workers:
-        color = WORKER_COLORS.get(wid, 'black')
-        marker = worker_marker_styles.get(wid, 'x')
-        
-        if marker == 'zone':
-            rect = Rectangle(
-                (wx, wy),
-                WORKER_SQUARE_SIZE,
-                WORKER_SQUARE_SIZE,
-                facecolor=color,
-                alpha=0.7,
-                edgecolor=color
-            )
-            ax2d.add_patch(rect)
-        else:
-            ax2d.scatter(wx, wy, color=color, marker=marker, s=50)
-    
-    # ax2d.set_title("Worker Positions (2D Top View)")
+    ax2d  = fig2d.add_subplot(111)
+    _ENV.draw_environment(ax2d, view="top")
+    ax2d.set_xlabel("X [m]"); ax2d.set_ylabel("Y [m]")
+
+    for wid, wx, wy, _ in workers:
+        draw_worker(ax2d, wid, wx, wy, view="top")
+
     ax2d.legend(legend_handles, legend_labels)
-    
-    # --- CREATE 3D PLOT (if requested) ---
+
+    # ── 4) optional 3-D view ───────────────────────────────────────────
     fig3d = None
     if plot_3d:
         fig3d = plt.figure(figsize=(12, 12))
-        ax3d = fig3d.add_subplot(111, projection='3d')
-        ax3d.set_xlabel("X [m]")
-        ax3d.set_ylabel("Y [m]")
-        ax3d.set_zlabel("Z [m]", labelpad=-1)
-        ax3d.zaxis.label.set_position((0.1, 0.5))
-        ax3d.set_xlim(x_limits)
-        ax3d.set_ylim(y_limits)
-        ax3d.set_zlim(z_limits)
+        ax3d  = fig3d.add_subplot(111, projection="3d")
+        _ENV.draw_environment(ax3d, view="3d")
         ax3d.view_init(elev=45, azim=-45)
-        # ax3d.set_title("Worker Positions (3D View)")
-        fig3d.subplots_adjust(left=0.1, right=0.65, top=0.9, bottom=0.15)
-        
-        # Draw the ground plane
-        xx, yy = np.meshgrid(
-            np.linspace(x_limits[0], x_limits[1], 10),
-            np.linspace(y_limits[0], y_limits[1], 10)
-        )
-        zz = np.full_like(xx, z_level)
-        ax3d.plot_surface(xx, yy, zz, color='peru', alpha=0.3, rstride=100, cstride=100)
-        
-        # Draw environment boxes in 3D
-        for (x_center, y_center), dims in zip(box_positions, box_dims):
-            width, height = dims
-            rect_xs = [
-                x_center - width/2,
-                x_center + width/2,
-                x_center + width/2,
-                x_center - width/2,
-                x_center - width/2
-            ]
-            rect_ys = [
-                y_center - height/2,
-                y_center - height/2,
-                y_center + height/2,
-                y_center + height/2,
-                y_center - height/2
-            ]
-            rect_zs = [z_level] * 5
-            verts = [list(zip(rect_xs, rect_ys, rect_zs))]
-            poly = Poly3DCollection(verts, facecolors=box_color, alpha=box_alpha, edgecolors='k')
-            ax3d.add_collection3d(poly)
-        
-        # Plot each worker on the 3D axes
-        for (wid, wx, wy, wz) in workers:
-            color = WORKER_COLORS.get(wid, 'black')
-            marker = worker_marker_styles.get(wid, 'x')
-            
-            if marker == 'zone':
-                size = WORKER_SQUARE_SIZE
-                sq_xs = [wx, wx + size, wx + size, wx, wx]
-                sq_ys = [wy, wy, wy - size, wy - size, wy]
-                sq_zs = [wz] * 5
-                verts = [list(zip(sq_xs, sq_ys, sq_zs))]
-                poly = Poly3DCollection(verts, facecolors=color, alpha=0.7, edgecolors=color)
-                ax3d.add_collection3d(poly)
-            else:
-                ax3d.scatter(wx, wy, wz, color=color, marker=marker, s=50)
-        
-        ax3d.legend(legend_handles, legend_labels)
 
+        for wid, wx, wy, wz in workers:
+            draw_worker(ax3d, wid, wx, wy, wz, view="3d")
+
+        ax3d.legend(legend_handles, legend_labels)
+        ax3d.set_xlabel("X [m]"); ax3d.set_ylabel("Y [m]"); ax3d.set_zlabel("Z [m]")
+
+    # Close figures to keep matplotlib quiet in non-interactive contexts
     plt.close(fig2d)
     if fig3d is not None:
         plt.close(fig3d)
+
     return fig3d, fig2d
 
 def segment_data(pos_data, debug=False):
@@ -1800,49 +1536,17 @@ class FOVPlotter:
         return corners_rot + np.array([x0, y0])
 
     def draw_environment_2d(self, ax):
-        """Draw the 2D environment: ground and boxes."""
-        ax.set_xlim(x_limits)
+        """Plan-view ground + site boxes via the central Environment."""
+        _ENV.draw_environment(ax, view="top")     # shared geometry
+        # slight padding in Y
         ax.set_ylim(y_limits[0] - 0.2, y_limits[1] + 0.2)
-        ax.set_xlabel("X [m]")
-        ax.set_ylabel("Y [m]")
-        # Draw ground
-        ground = Rectangle((x_limits[0], y_limits[0]- 0.2),
-                           x_limits[1] - x_limits[0],
-                           (y_limits[1] + 0.2) - (y_limits[0] - 0.2),
-                           facecolor='peru', alpha=0.3)
-        ax.add_patch(ground)
-        # Draw boxes
-        for (cx, cy), (w, h) in zip(box_positions, box_dims):
-            x1, y1 = cx - w/2, cy - h/2
-            rect = Rectangle((x1, y1), w, h, facecolor=box_color,
-                             alpha=box_alpha, edgecolor='k', linewidth=2)
-            ax.add_patch(rect)
 
     def draw_environment_3d(self, ax):
-        """Draw the 3D environment: ground surface and boxes."""
-        ax.set_xlim(x_limits)
+        """Isometric scene via Environment (keeps labels & limits)."""
+        _ENV.draw_environment(ax, view="3d")
+        # Y-range tweak and view angle
         ax.set_ylim(y_limits[0] - 0.2, y_limits[1])
-        ax.set_zlim(z_limits)
-        ax.set_xlabel("X [m]")
-        ax.set_ylabel("Y [m]")
-        ax.set_zlabel("Z [m]")
         ax.view_init(elev=35, azim=-45)
-        # Draw ground surface
-        xx, yy = np.meshgrid(np.linspace(x_limits[0], x_limits[1], 10),
-                             np.linspace(y_limits[0], y_limits[1], 10))
-        ax.plot_surface(xx, yy, np.full_like(xx, z_level), color='peru',
-                        alpha=0.3, rstride=1, cstride=1)
-        # Draw boxes
-        for (cx, cy), (w, h) in zip(box_positions, box_dims):
-            x1, x2 = cx - w/2, cx + w/2
-            y1, y2 = cy - h/2, cy + h/2
-            verts = [list(zip([x1, x2, x2, x1, x1],
-                              [y1, y1, y2, y2, y1],
-                              [z_level + 0.06] * 5))]
-            ax.add_collection3d(
-                Poly3DCollection(verts, facecolors=box_color,
-                                 alpha=box_alpha, edgecolors='k')
-            )
 
     def _apply_packet_transform(self, packet):
         """

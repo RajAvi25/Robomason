@@ -29,25 +29,7 @@ except PermissionError:
 REFRESH_INTERVAL = 10.0   # secs between allowed redraws
 POINT_BATCH      = 100   # max points before forcing a redraw
 EPS              = 0.02  # RDP epsilon for decimation
-# ————————————————————————————————
 
-# def rdp(pts, eps=EPS):
-#     """Ramer–Douglas–Peucker decimation (keeps only the 'corners')."""
-#     if len(pts) < 3:
-#         return pts
-#     a, b = pts[0], pts[-1]
-#     idx, maxd = 0, 0.0
-#     for i, p in enumerate(pts[1:-1], start=1):
-#         num = abs((b[1]-a[1])*p[0] - (b[0]-a[0])*p[1] + b[0]*a[1] - b[1]*a[0])
-#         den = math.hypot(b[1]-a[1], b[0]-a[0])
-#         d   = num/den if den else 0.0
-#         if d > maxd:
-#             idx, maxd = i, d
-#     if maxd > eps:
-#         left  = rdp(pts[:idx+1], eps)
-#         right = rdp(pts[idx:],   eps)
-#         return left[:-1] + right
-#     return [a, b]
 
 @njit
 def _perp_dist_2d(x0, y0, x1, y1, x2, y2):

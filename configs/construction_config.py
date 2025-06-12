@@ -22,8 +22,6 @@ ELEMENT_COLORS = {
     "Bathroom module 3":    "tan",
 }
 
-# In construction_config.py
-
 # Define a base dictionary for states common to both modes.
 BASE_STATE_STYLES = {
     "pick":       {"linewidth": 2.0, "linestyle": "--"},
@@ -51,20 +49,6 @@ SITE_ALPHA = 0.5
 
 #######
 
-# # We'll use the same line style (solid) for both states, but vary thickness & alpha
-# line_styles = {
-#     "grab":  "-",  # same line style
-#     "place": "-"
-# }
-# line_widths = {
-#     "grab":  5.5,  # thicker line
-#     "place": 1.5   # thinner line
-# }
-# line_alpha = {
-#     "grab":  1.0,  # fully opaque
-#     "place": 0.7   # slightly transparent
-# }
-
 WORKER_COLORS = {
     5: 'cyan',
     6: 'green',
@@ -79,7 +63,6 @@ WORKER_COLORS = {
     18: 'magenta',
     19: 'teal'
 }
-
 
 worker_marker_styles = {
     5: 'x',     
@@ -96,17 +79,18 @@ worker_marker_styles = {
     19: 'x'      
 }
 
-# # Axes limits
-# z_level = -0.155
-# x_limits = (-0.45, 0.81)
-# y_limits = (-0.35, 0.75)
+#  Axes limits
+z_level = -0.155
+
+# x_limits = (-0.45, 1.05)
+# y_limits = (-0.35, 1.15)
 # z_limits = (z_level, 0.5)
 
-# Axes limits
-z_level = -0.155
-x_limits = (-0.45, 1.05)
-y_limits = (-0.35, 1.15)
-z_limits = (z_level, 0.5)
+SCALING_FACTOR = 0.75
+
+x_limits = (-0.35, 0.81)
+y_limits = (-0.25, 0.75)
+z_limits = (z_level, 0.49)
 
 # Dimensions for environment "boxes"
 b1_dims = (29.5 / 100, 21 / 100)  # pickup site
@@ -152,7 +136,6 @@ MARKER_SIZE = 0.023
 SITE_MARKER_SIZE = 0.02
 ELEMENT_MARKER_SIZE = 0.01
 WORKER_SQUARE_SIZE = 0.1
-
 
 camera_pos1 = [0.9474727511405945,
  -1.7047339878477992,
