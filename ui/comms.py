@@ -23,6 +23,41 @@ tracking_packets = []
 tracking_packets_lock = Lock()
 
 def publisher_trackingworker(framehandler):
+    """
+    Publish frames and robot state to the tracking worker (over ZeroMQ).
+
+    This thread function opens a PUB socket on tcp://127.0.0.1:5550 and continuously:
+      - Grabs the latest camera frame,
+      - Encodes it as a JPEG and base64 string,
+      - Retrieves current robot end-effector coordinates, orientation matrix, joint angles, 
+        and obstacle maneuver flag via `mdl.get_EE_coords()`, etc.
+      - Packages all these into a JSON message and sends it out.
+
+    The JSON message has structure:
+    ```
+    {
+      'image': <base64_jpg_string>,
+      'coordinates': {'x': ..., 'y': ..., 'z': ...},
+      'orientation': [[..., ..., ...], [...], [...]],   # 3x3 matrix
+      'element': <current_element_label>,
+      'state': <current_state_label>,
+      'joints': [...six joint values...],
+      'obstacle_maneuver': <bool>
+    }
+    ```
+    where `element` and `state` come from `construction_status` (updated by construction routines to reflect ongoing action).
+
+    **Purpose:**
+    This is the publisher side of the vision pipeline: it streams data to the external *tracking node*, 
+    which is responsible for marker detection and intrusion monitoring. By including `element` and `state`, 
+    the tracking node knows what the robot is doing (e.g., "Wall_1 pick") when analyzing frames, and by including robot pose, 
+    it can do coordinate transformations if needed.
+
+    **Role in System:**
+    This enables the decoupling of heavy image processing from real-time robot control, using ZeroMQ as the message bus:contentReference[oaicite:20]{index=20}. 
+    It supports *real-time worker-aware replanning* by ensuring that the tracking node has up-to-date images and robot pose; 
+    if a worker enters (detected in the image), the tracking node will publish a message that can trigger the robot to detour mid-action:contentReference[oaicite:21]{index=21}.
+    """
     context = zmq.Context()
     publisher_socket = context.socket(zmq.PUB)
     publisher_socket.bind("tcp://127.0.0.1:5550")
@@ -66,6 +101,31 @@ def send_data_plotting(data):
     plotting_socket.send(packed_data)
 
 def receive_data_UI():
+    """
+    Subscribe to processed tracking messages and forward them to the UI plotting.
+
+    Opens a SUB socket to tcp://127.0.0.1:5552 (which is where the tracking worker publishes results).
+    For each incoming message (JSON string), it:
+      - Parses the JSON into a dict (`response`).
+      - Pushes the data into `tracking_packets` list (with thread lock protection).
+      - Also calls `send_data_plotting(response)` which forwards the data (packed via msgpack) to another socket for real-time plotting.
+
+    The data in `response` includes:
+    - "coordinates": [x, y, z] of whatever object was tracked (e.g., the ArUco marker or worker),
+    - "element": current element label during that frame,
+    - "state": current state label,
+    - "joints": robot joint angles,
+    - "orientation": robot EE orientation,
+    - "worker spotted": boolean if a worker was seen,
+    - "worker coordinates": (if worker spotted, the image or world coords of the worker),
+    - "worker id": ID of the detected worker marker,
+    - "obstacle_maneuver": bool flag mirrored from robot (whether robot was in avoidance mode),
+    - "timestamp_send": time when tracking message was sent.
+
+    **Role:**
+    This is the receiving end of the tracking pipeline for the UI. All messages appended to `tracking_packets` serve as a timeline of events 
+    that can be analyzed (e.g., by `construct/analysis.py` to find hazard events). Real-time plotting uses this to visualize robot motion and hazards.
+    """
     global tracking_packets
     context = zmq.Context()
     subscriber_socket = context.socket(zmq.SUB)
@@ -83,6 +143,17 @@ def receive_data_UI():
             print(f"Error in tracking data receiving thread: {e}")
 
 def get_tracking_packets(clear_after_retrieval=False):
+    """
+    Retrieve all accumulated tracking packets.
+
+    **Parameters:**
+    - *clear_after_retrieval (bool)* – If True, the internal list is cleared after copying its contents.
+
+    **Returns:**
+    - *list of dict* – A shallow copy of all tracking packets received so far (each dict is one message from tracking).
+
+    Use this to get the log of events (e.g., for analysis at the end of a run). Optionally clear the log if it’s no longer needed.
+    """
     global tracking_packets
     with tracking_packets_lock:
         data_copy = tracking_packets.copy()
@@ -91,12 +162,18 @@ def get_tracking_packets(clear_after_retrieval=False):
     return data_copy
 
 def refresh_tracking_packets():
-    """Clears tracking packets collected so far without interrupting new updates."""
+    """Thread-safe clear of the tracking_packets list (e.g., to start fresh for a new run)."""
     global tracking_packets
     with tracking_packets_lock:
         tracking_packets.clear()
 
 def get_current_packet():
+    """
+    Get the most recent tracking packet (if any).
+
+    Returns the last dictionary in tracking_packets list without removing it, or None if no data yet.
+    Useful for quickly checking the latest status (e.g., whether a worker was just spotted).
+    """
     with tracking_packets_lock:
         if tracking_packets:
             return tracking_packets[-1]
@@ -105,39 +182,33 @@ def get_current_packet():
         
 def save_failed_run(run_phase,block_list, pl_pos,img):
     """
-    Grabs all current tracking packets via get_tracking_packets(),
-    then saves them (plus metadata) into a newly created subfolder under
-    '_workingdata/_siteinfo/_failedruns'. Subfolders are named '00', '01', '02', etc.
-    
-    Args:
-        run_phase (str): One of 'assembly', 'disassembly', or 'reassembly'.
+    Save data about a failed run (assembly/disassembly) for offline analysis.
+
+    When a run is aborted or verification fails, this can be called to record:
+    - All tracking packets up to the failure,
+    - The sequence of elements attempted (`block_list`),
+    - The positions at which they were placed (`pl_pos`),
+    - A snapshot image from the moment of failure (`img`).
+
+    It creates a new folder under `_workingdata/_siteinfo/_failedruns` with an incremented index, and saves:
+    - A JSON file containing the packets, block list, and placed positions.
+    - An image file (PNG) of the failure scene.
+
+    **Parameters:**
+    - *run_phase (str)* – Phase of operation ("assembly", "disassembly", or "reassembly").
+    - *block_list (list)* – The sequence of elements that were being processed.
+    - *pl_pos (list)* – The list of placement positions (end-effector poses) for those elements.
+    - *img* – An image (NumPy array) to save representing the scene at failure.
+
+    **Returns:**
+    - *Path* – Filesystem path to the directory where data was saved.
+
+    **Note:**
+    This function ensures the directory exists, finds the next numeric index, and writes the data. It's used to accumulate evidence for what went wrong, enabling *post-run analysis* of safety or accuracy failures.
     """
     # 1) Retrieve a copy of the packets
     packets = get_tracking_packets(clear_after_retrieval=False)
     
-    # # 2) Ensure base directory exists
-    # base_dir = os.path.join("_workingdata", "_siteinfo", "_failedruns")
-    # os.makedirs(base_dir, exist_ok=True)
-    
-    # # 3) Find existing numeric subfolders and compute next index
-    # existing_indices = []
-    # for name in os.listdir(base_dir):
-    #     full_path = os.path.join(base_dir, name)
-    #     if os.path.isdir(full_path) and name.isdigit():
-    #         try:
-    #             existing_indices.append(int(name))
-    #         except ValueError:
-    #             pass
-    
-    # if existing_indices:
-    #     next_index = max(existing_indices) + 1
-    # else:
-    #     next_index = 0
-    
-    # folder_name = f"{next_index:02d}"  # zero-pad to at least two digits
-    # run_dir = os.path.join(base_dir, folder_name)
-    # os.makedirs(run_dir, exist_ok=False)
-
     root = Path("_workingdata/_siteinfo/_failedruns").resolve()
     root.mkdir(parents=True, exist_ok=True)
 
@@ -244,107 +315,6 @@ def initTracker(delay=0.75):
 
 def initPlotting():
     threading.Thread(target=receive_data_UI, daemon=True).start()
-
-# # ----------------- child process (runs Tk) -----------------
-# def _board_process(q_in: mp.Queue, q_out: mp.Queue, bg: str = "white"):
-#     root = tk.Tk()
-#     root.title("✦ Question Board ✦")
-#     root.configure(bg=bg)
-#     frm = tk.Frame(root, bg=bg)
-#     frm.pack(expand=True, fill="both", padx=40, pady=40)
-
-#     # holder objects so nested funcs can mutate them
-#     state = {"frame": None, "timer_id": None}
-
-#     def _display_question(payload):
-#         """Create widgets for a new question."""
-#         qid, text, options, timeout, default_idx = payload
-#         # clear previous contents
-#         for child in frm.winfo_children():
-#             child.destroy()
-
-#         lbl_q = tk.Label(frm, text=text, font=("Helvetica", 14), bg=bg)
-#         lbl_q.pack(pady=(0, 10))
-
-#         btn_frame = tk.Frame(frm, bg=bg)
-#         btn_frame.pack(pady=(0, 10))
-
-#         # callback factory
-#         def make_cmd(opt):
-#             return lambda: _finish(qid, opt)
-
-#         for opt in options:
-#             tk.Button(btn_frame, text=opt, width=10,
-#                       command=make_cmd(opt)).pack(side="left", padx=6)
-
-#         lbl_timer = tk.Label(frm, bg=bg, fg="grey")
-#         lbl_timer.pack()
-
-#         # countdown using root.after
-#         def _countdown(t_left):
-#             if t_left < 0:
-#                 _finish(qid, options[default_idx])
-#                 return
-#             lbl_timer.config(text=f"Auto in {t_left}s")
-#             state["timer_id"] = root.after(1000, _countdown, t_left - 1)
-
-#         _countdown(timeout)
-
-#     def _finish(qid, choice):
-#         """Send answer back and wipe widgets."""
-#         if state["timer_id"]:
-#             root.after_cancel(state["timer_id"])
-#             state["timer_id"] = None
-#         q_out.put((qid, choice))
-#         for child in frm.winfo_children():
-#             child.destroy()  # blank board
-
-#     # poll the input queue every 100 ms
-#     def _poll():
-#         try:
-#             while True:      # drain
-#                 payload = q_in.get_nowait()
-#                 if payload == "__quit__":
-#                     root.destroy(); return
-#                 _display_question(payload)
-#         except Exception:
-#             pass
-#         root.after(100, _poll)
-
-#     root.after(100, _poll)
-#     root.mainloop()
-
-# # ----------------- public helper class -----------------
-# class QuestionBoard:
-#     def __init__(self, bg: str = "white"):
-#         self.q_in  : mp.Queue = mp.Queue()
-#         self.q_out : mp.Queue = mp.Queue()
-#         self.proc           = mp.Process(target=_board_process,
-#                                          args=(self.q_in, self.q_out, bg),
-#                                          daemon=True)
-#         self.proc.start()
-
-#     # ----------------------------------------------------
-#     def ask(self, question: str, options=("Yes", "No"),
-#             timeout: int = 5, default_idx: int = 0) -> str:
-#         """
-#         Show a single question, block until answer or timeout.
-#         Returns the chosen option.
-#         """
-#         qid = str(uuid.uuid4())
-#         self.q_in.put((qid, question, options, timeout, default_idx))
-#         # wait for answer
-#         while True:
-#             ans_qid, choice = self.q_out.get()
-#             if ans_qid == qid:
-#                 return choice
-
-#     # ----------------------------------------------------
-#     def close(self):
-#         """Terminate the board process cleanly."""
-#         self.q_in.put("__quit__")
-#         self.proc.join(timeout=1)
-
 
 # ----------------- child process (runs Tk) -----------------
 def _board_process(q_in: mp.Queue, q_out: mp.Queue, bg: str = "white"):

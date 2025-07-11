@@ -33,12 +33,31 @@ EPS              = 0.02  # RDP epsilon for decimation
 
 @njit
 def _perp_dist_2d(x0, y0, x1, y1, x2, y2):
+    """
+    Compute perpendicular distance from point (x0, y0) to the line through (x1, y1)-(x2, y2).
+
+    Used by the Ramer–Douglas–Peucker algorithm to find maximal deviation.
+    Returns 0.0 if the line segment is degenerate.
+    """
     num = abs((y2 - y1)*x0 - (x2 - x1)*y0 + x2*y1 - y2*x1)
     den = math.hypot(y2 - y1, x2 - x1)
     return num/den if den > 0 else 0.0
 
 @njit
 def rdp_numba(pts, eps):
+    """
+    Ramer–Douglas–Peucker line simplification implemented with Numba.
+
+    **Parameters:**
+    - *pts*: A (N×2) NumPy array of [x, y] points.
+    - *eps* (float): Maximum allowed perpendicular deviation.
+
+    **Returns:**
+    - A simplified array of points preserving endpoints and deviations > eps.
+
+    This decimation reduces the number of trajectory points sent to the GUI,
+    preventing lag and aligning with the paper’s requirement for O(n) per-frame cost.
+    """
     n = pts.shape[0]
     if n < 3:
         return pts
@@ -67,8 +86,22 @@ def rdp_numba(pts, eps):
 
 def throttled_dispatcher(zmq_queue, plot_input_queues, plot_output_queues):
     """
-    Reads raw points from zmq_queue, buffers them, RDP‐decimates,
-    and fans out to each plot_input_queue only once per batch/time.
+    Buffer and decimate incoming XYZ points, then dispatch to plot workers.
+
+    **Parameters:**
+    - *zmq_queue*: Multiprocessing.Queue receiving dicts with keys 'x','y','z'.
+    - *plot_input_queues*: Dict of view-name → multiprocessing.Queue to send decimated points.
+    - *plot_output_queues*: Unused here (GUI uses its own queues).
+
+    **Behavior:**
+    1. Continuously read points from `zmq_queue` (blocking).
+    2. Append each (x,y,z) to an internal buffer.
+    3. If buffer size ≥ POINT_BATCH or time since last dispatch ≥ REFRESH_INTERVAL:
+       a. Convert buffer to a NumPy (N×2) array of [x, y] and run `rdp_numba` with EPSILON.
+       b. For each simplified point, rebuild dict `{'x':…, 'y':…, 'z':…}` and put it
+          into every queue in `plot_input_queues`.
+       c. Clear buffer and reset the dispatch timer.
+    This ensures a balance between plot fidelity and rendering performance.
     """
     buffer    = []
     last_draw = time.time()

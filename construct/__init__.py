@@ -40,7 +40,12 @@ from .construction import (
     update_site_positions,
     construct_and_verify,
     reconstruct_and_verify,
-    install_Foundation
+    install_Foundation,
+    install_Walls,
+    search_element,
+    pick_element,
+    swing,
+    place_element,
 
 )
 
@@ -68,5 +73,6 @@ __all__ = [
     "pick", "place", "scan_site", "disassembly",
     "pick_random_element", "place_random_element",
     "check_resume", "update_site_positions","construct_and_verify","reconstruct_and_verify",
-    "install_Foundation"
+    "install_Foundation","install_Walls"
+    "search_element","pick_element","swing","place_element"
 ]

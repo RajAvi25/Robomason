@@ -12,18 +12,26 @@ import os
 import psutil
 import queue
 
-# NEW – shared worker icons
 from environment.worker import draw_worker, legend_handles
-
-# from plotting.utils import (
-#     draw_ground, draw_sites, process_incoming_data,
-#     forward_kinematics, normalize_element_name,
-#     SCALING_FACTOR, x_limits, y_limits, z_limits, z_level,
-#     SCANNING_STYLE, ELEMENT_COLORS,
-#     STATE_STYLES_ASSEMBLY, WORKER_COLORS
-# )
+from .utils import (
+    draw_ground, draw_sites, process_incoming_data, forward_kinematics,
+    normalize_element_name, SCALING_FACTOR,
+    x_limits, y_limits, z_limits, z_level,
+    SCANNING_STYLE, ELEMENT_COLORS, STATE_STYLES_ASSEMBLY, WORKER_COLORS
+)
 
 def data_dispatcher_func(zmq_data_queue, plot_input_queues):
+    """
+    Drain the ZMQ data queue and forward each packet to all plot-input queues.
+
+    **Parameters:**
+    - *zmq_data_queue*: multiprocessing.Queue receiving dicts of tracking data.
+    - *plot_input_queues*: dict of view_name → multiprocessing.Queue.
+
+    **Behavior:**
+    Continuously attempts non-blocking reads from zmq_data_queue. For each
+    retrieved data packet, enqueues it on every queue in plot_input_queues.
+    """
     while not zmq_data_queue.empty():
         try:
             data = zmq_data_queue.get_nowait()
@@ -37,6 +45,18 @@ def data_dispatcher_func(zmq_data_queue, plot_input_queues):
 # ZMQ RECEIVER FUNCTION
 # -------------------------
 def zmq_receiver(data_queue):
+    """
+    Subscribe to IPC socket and feed every 10th msgpack–encoded packet into data_queue.
+
+    **Parameters:**
+    - *data_queue*: multiprocessing.Queue to receive unpacked dicts.
+
+    **Behavior:**
+    - Connects to `ipc:///tmp/plotter.ipc` via a ZMQ SUB socket.
+    - Uses `CONFLATE=1` and `RCVHWM=1` to keep only the newest message in buffer.
+    - Blocks up to 1 s per recv (RCVTIMEO=1000 ms).
+    - For every tenth packet received, unpacks with msgpack and enqueues into data_queue.
+    """
     packet_counter = 0
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
@@ -60,23 +80,47 @@ def zmq_receiver(data_queue):
             print("ZMQ error:", e)
             break
 
-import os
-import psutil
-import queue
-from io import BytesIO
-
-import numpy as np
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-
-from .utils import (
-    draw_ground, draw_sites, process_incoming_data, forward_kinematics,
-    normalize_element_name, SCALING_FACTOR,
-    x_limits, y_limits, z_limits, z_level,
-    SCANNING_STYLE, ELEMENT_COLORS, STATE_STYLES_ASSEMBLY, WORKER_COLORS
-)
-
 def plot_view_worker(input_q, output_q, view, barrier):
+    """
+    Rendering worker for one view: maintains historic trajectory, incremental segments,
+    robot skeleton, and worker markers, then emits RGBA frames.
+
+    **Parameters:**
+    - *input_q*: multiprocessing.Queue receiving dicts with keys "coordinates", "joints",
+      "element", "state", "worker spotted", "worker id", "worker coordinates".
+    - *output_q*: multiprocessing.Queue to send tuples
+      (element, state, raw_rgba_bytes, width, height) for GUI display.
+    - *view*: one of "3d", "top", "front", or "side" determining projection.
+    - *barrier*: multiprocessing.Barrier to synchronize frame emission across views.
+
+    **Pipeline:**
+    1. **Setup Static Scene**:  
+       Create a Matplotlib Figure & Axes; draw ground and site markers; capture
+       a clean background buffer for blitting.
+    2. **Initialize Artists**:  
+       - `robot_line`: Line2D (or 3D) for robot skeleton.  
+       - `history_line`: Line2D for full accumulated trajectory.  
+       - `worker_artist`: drawn per-frame if a worker intrusion is active.
+    3. **Pre-allocate History Buffer**:  
+       A fixed-size NumPy array (`MAX_POINTS`) to store all coords for O(1)
+       per-frame history updates.
+    4. **Performance Tweaks**:  
+       - Pins this process to CPUs [4–7] and increases niceness to -5.  
+       - Uses Agg backend and blit/restore for constant-time redraw.
+    5. **Main Loop**:  
+       a. Drain `input_q` to get the newest packet (`pkt`).  
+       b. Extract `(coords, joints)` via `process_incoming_data`.  
+       c. **Render History**: append `coords` to buffer, update `history_line`.  
+       d. **Render Incremental Segment**: draw last segment with style based
+          on previous element/state.  
+       e. **Determine Next Style**: set `prev_col`, `prev_ls`, `prev_lw` from
+          `SCANNING_STYLE` or `STATE_STYLES_ASSEMBLY`.  
+       f. **Draw Robot**: compute forward kinematics, update `robot_line`.  
+       g. **Draw Worker** (if flagged): call `draw_worker(...)` on the Axes.  
+       h. **Blit & Emit**: draw artists, blit to canvas, retrieve raw RGBA buffer,
+          and enqueue `(element, state, raw_bytes, w, h)` on `output_q`.  
+       i. Synchronize with other views via `barrier.wait()`.
+    """
     # --- static scene ---------------------------------------------------
     fig = Figure(figsize=(4, 3), dpi=100 * SCALING_FACTOR)
     if view == "3d":

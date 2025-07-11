@@ -21,6 +21,30 @@ from io import BytesIO
 from .utils import *
 
 class MainWindow(QMainWindow):
+    """
+    Main application window for real-time trajectory views.
+
+    **Initialization Parameters:**
+    - *zmq_data_queue*: Queue receiving raw tracking JSON packets from the ZeroMQ subscriber.
+    - *plot_input_queues*: Dict mapping view names ("3d","top","front","side") to queues
+      where raw packets are sent for rendering.
+    - *plot_output_queues*: Dict mapping view names to queues where rendered image data
+      (PNG bytes or raw RGBA) is received.
+    - *data_dispatcher*: Optional dispatcher object (not used directly here).
+
+    **Layout:**
+    1. Status bar (QLabel) showing the current element and state.
+    2. 2×2 grid of QLabel widgets for the four trajectory views.
+    3. Scrollable legend panel displaying line‐style swatches for each element/state.
+
+    **Behavior:**
+    - A QTimer fires every 100 ms, triggering `_on_timer()`.
+    - `_on_timer()` pulls all available packets from `zmq_data_queue`, forwards them to
+      each plotting worker via `plot_input_queues`, then collects the latest rendered
+      image from each `plot_output_queue` and updates the corresponding view label.
+    - Updates the status bar text based on the metadata (element, state) of the most
+      recently displayed view.
+    """
     def __init__(
         self, zmq_data_queue,
         plot_input_queues, plot_output_queues,
@@ -139,6 +163,15 @@ class MainWindow(QMainWindow):
         self.timer.start(100)
 
     def _on_timer(self):
+        """
+        Periodic update callback.
+
+        1. Drain all raw packets from `zmq_data_queue`, forwarding each to all
+           `plot_input_queues` so the plotting workers receive the latest data.
+        2. For each view, retrieve the most recent rendered image (PNG or raw RGBA)
+           from its `plot_output_queue` and update the corresponding QLabel.
+        3. Update the status bar text based on the last displayed element/state.
+        """
         # 1) dispatch incoming data to workers…
         last_pkt = None
         while not self.zmq_data_queue.empty():

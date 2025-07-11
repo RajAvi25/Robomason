@@ -11,6 +11,42 @@ from robot_controller import globals as rc_globals  # Import the globals module 
 _ENABLE_OBSTACLE_AVOIDANCE = True
 
 class RobotController:
+    """
+    Controller for the UR5e robot arm, integrating direct URScript commands with safety checks.
+
+    This class handles:
+    - Connecting to the physical robot (UR5e) via network.
+    - Controlling a custom parallel gripper through digital outputs.
+    - Providing high-level movement commands (movej, movel, translate_tool, set_orientation) 
+      that include an automatic stop and avoidance if a worker intrusion is detected.
+
+    **Key Attributes:**
+    - *robot*: The `urx.Robot` instance representing the robot (established on connect).
+    - *gripper_socket*: TCP socket to the gripper controller (assuming a Robotiq or custom gripper via UR controller IO).
+    - *debug (bool)*: Whether to print debug information about connections and motions.
+
+    **Safety Mechanism – Worker-Aware Replanning:**
+    Each motion command uses `_move_robot_command` which wraps `_execute_robot_command`. In `_execute_robot_command`, a background thread sends the move command to the robot, while the main thread monitors the global `marker_stop_flag`. If a worker’s ArUco marker is detected (flag is set by `marker_trigger`), the robot:
+    - Stops the motion immediately (`robot.stopj()`),
+    - Sets a resume flag to allow later continuation,
+    - If obstacle avoidance is enabled, performs an automatic retreat (`makerAvoidmovement()` which moves the arm slightly away from the obstacle) while `rc_globals.OBSTACLE_MANEUVER` is True:contentReference[oaicite:22]{index=22},
+    - Once avoidance is done, it clears the flag and signals the move as incomplete.
+
+    The outer loop `_move_robot_command` will then retry the intended motion. This results in a brief detour whenever a human intrudes, then a resumption of the task once clear – implementing the *real-time replanning around a human*:contentReference[oaicite:23]{index=23}.
+
+    **Hand-Tuned Motion Adjustments:**
+    The class defines helper logic like `move_inwards` in `_execute_robot_command` to slightly retract along a vector (used in makerAvoidmovement with `safetyDist=0.1m`). These distances and speeds for avoidance are manually chosen to balance safety and speed.
+
+    **Methods:**
+    - `connect_to_robot()`: Attempts to connect to the UR5e multiple times.
+    - `gripper_width(width)`: Opens/closes gripper to preset widths (0=fully closed, 100=fully open, with intermediate discrete steps).
+    - `_execute_robot_command(command_fn, pos, acc, vel, name)`: Low-level execution with safety monitoring.
+    - `_move_robot_command(...)`: Retries motion if `_execute_robot_command` indicates it was interrupted by safety stop.
+    - High-level motion commands: `movej`, `movel`, `translate_tool`, `set_orientation` – all parse input, ensure robot connection, and call `_move_robot_command` with appropriate URScript command.
+
+    **Usage:**
+    This controller is used under the hood by higher-level functions in `ui.mobility` (likely a convenience wrapper for these methods to be called easily from the UI or scripts). It abstracts the direct robot commands and injects the safety layer.
+    """
     def __init__(self, host="192.168.1.10", port=30002, debug=True):
         self.host = host
         self.port = port
@@ -92,6 +128,40 @@ class RobotController:
         return f"Gripper width set to {width}"
 
     def _execute_robot_command(self, command_fn, pos, acc, vel, command_name):
+        """
+        Internal helper to execute a robot move command with safety monitoring.
+
+        Launches the given URX `command_fn` (like robot.movej or movel) in a thread so that we can monitor 
+        the `marker_stop_flag` concurrently. If a stop is signaled (meaning a worker intruded), it stops the robot and optionally performs avoidance.
+
+        **Parameters:**
+        - *command_fn*: Function handle to the URX move command (e.g., self.robot.movej).
+        - *pos*: Position target (list of 6 floats for joint targets or pose).
+        - *acc (float)*: Acceleration for the move.
+        - *vel (float)*: Velocity for the move.
+        - *command_name (str)*: Name of the command (for logging/debug).
+
+        **Returns:**
+        - *bool* – True if the move completed without interruption, False if it was stopped due to a marker detection.
+
+        **Mechanism:**
+        - Starts the move in a separate thread (so it doesn't block).
+        - In the main thread, loops until that thread finishes, checking every 0.05s if `marker_stop_flag` is set.
+        - If a marker is detected (flag set), it prints a message, stops the robot smoothly (`stopj(1.0)` for a 1s stop ramp), and sets `stop_signal`.
+        - After the move thread ends (either normally or via stop), if a stop occurred:
+            * Within a locked section (`prompt_user_lock` to avoid race with other prompts), 
+              it checks the global `_ENABLE_OBSTACLE_AVOIDANCE`. If enabled:
+                - Sets `rc_globals.OBSTACLE_MANEUVER = True` (so the rest of system knows we are in avoidance mode, e.g., data_publisher will include this:contentReference[oaicite:24]{index=24}).
+                - Clears the marker_stop_flag (to allow subsequent detections).
+                - Calls `makerAvoidmovement()` which computes a slight retreat pose (10cm back along the vector from current pose to origin) and executes a slow `movel` to that pose. This is the detour step to create distance from the obstacle (worker).
+                - After that move, sets `rc_globals.OBSTACLE_MANEUVER = False` and returns False indicating interruption.
+            * If avoidance is not enabled, it would simply return False (stop without detour).
+        - If no stop occurred, returns True.
+
+        **Note:** `makerAvoidmovement()` uses the current robot position and orientation to move outwards (or inwards to origin) by `safetyDist`. It's a simplistic avoidance: effectively backing off straight-line from whatever point it was stopped.
+
+        **Threading Consideration:** The use of `prompt_user_lock` ensures that if the robot was stopped and is about to perform avoidance, no other prompt (e.g., a verify prompt) interferes. It treats the avoidance as a critical section.
+        """
         stop_signal = threading.Event()
         robot = self.robot
 
@@ -139,6 +209,7 @@ class RobotController:
             target_pose = list(corrected_loc) + rotation_vector.tolist()
             robot.movel(target_pose, acc=0.1, vel=0.1)
 
+        # Thread to execute robot motion
         def move_thread_func():
             try:
                 if self.debug:
@@ -159,6 +230,7 @@ class RobotController:
         move_thread = threading.Thread(target=move_thread_func, daemon=True)
         move_thread.start()
 
+        # Monitor thread for marker stop
         while not stop_signal.is_set():
             if marker_stop_flag.is_set():
                 print(f"Marker detected: stopping robot mid-motion ({command_name})...")
@@ -167,6 +239,7 @@ class RobotController:
             time.sleep(0.05)
         move_thread.join()
 
+        # After movement attempt:
         if marker_stop_flag.is_set():
             with prompt_user_lock:
                 if _ENABLE_OBSTACLE_AVOIDANCE:
@@ -180,6 +253,19 @@ class RobotController:
         return True
 
     def _move_robot_command(self, command_fn, pos, acc, vel, command_name):
+        """
+        Wrapper to execute a robot command, retrying if interrupted by safety stop.
+
+        This will call `_execute_robot_command`. If it returns False (meaning the robot was stopped due to a marker detection and performed avoidance), 
+        it will log that event (if debug) and then **retry** the motion by looping back until a True is returned.
+
+        This means the robot will attempt the motion repeatedly until it either succeeds or is manually interrupted, 
+        effectively implementing *resilient motion that pauses and resumes around obstacles*.
+
+        **Parameters:** same as `_execute_robot_command`.
+
+        **Returns:** None – it prints/logs the outcome and ensures the motion is carried out eventually.
+        """
         while True:
             result = self._execute_robot_command(command_fn, pos, acc, vel, command_name)
             if result:
@@ -191,6 +277,27 @@ class RobotController:
                     print(f"Marker was detected and avoidance maneuver executed during {command_name}. Retrying move...")
 
     def movej(self, destination_str):
+        """
+        Execute a joint-space movement (moveJ) to the target joint angles with safety monitoring.
+
+        **Parameters:**
+        - *destination_str (str)* – A JSON string or Python literal string that decodes to `[position, acceleration, velocity]`.
+            - position: list of 6 joint target angles (radians).
+            - acceleration: float (rad/s^2).
+            - velocity: float (rad/s).
+
+        **Returns:**
+        - *str* – Confirmation message or error message.
+
+        **Function:**
+        - Parses the input string into a Python object.
+        - Validates format.
+        - If robot is not connected, attempts to reconnect.
+        - Uses `_move_robot_command(self.robot.movej, ...)` to perform the motion with obstacle avoidance enabled.
+        - If successful, returns a message that movej was executed.
+
+        This is typically called via a remote interface (like Jupyter) sending JSON commands to the robot. 
+        """
         try:
             destination = json.loads(destination_str)
             if not isinstance(destination, list) or len(destination) != 3:

@@ -187,12 +187,12 @@ orientations = {
 pickup_offsets = {
     "foundation": {"x": -0.037 , "y": -0.095, "z": 0.195},
     "wall": {"x": -0.016, "y": -0.087, "z": 0.20},  
-    "floor": {"x": -0.050, "y": -0.105, "z": 0.195}
+    "floor": {"x": -0.055, "y": -0.115, "z": 0.195}
 }
 
 # Disassembly related constants
 drops = np.array([
-    [ 0.1,        0.17      ],  # upper-right (n_place = 0)
+    [ 0.1,        0.15      ],  # upper-right (n_place = 0)
     [0.1,        0.05      ],  # upper-left  (n_place = 1)
     [-0.15,       0.17       ],  # lower-right (n_place = 2)
     [-0.12,      0.05],        # lower-left  (n_place = 3)
@@ -225,12 +225,12 @@ bathroom_module_area_thresholds = {
 
 bathroom_module_radius = 0.025
 
-x_offest_bathroom_module_place_1 = -0.0025 # +ve is right
-y_offest_bathroom_module_place_1 = -0.0125
+x_offest_bathroom_module_place_1 = 0.0125 # -ve is right
+y_offest_bathroom_module_place_1 = 0.0125
 z_offest_bathroom_module_place_1 = -0.22
 
-x_offest_bathroom_module_place_2 = 0.0005
-y_offest_bathroom_module_place_2 = -0.01
+x_offest_bathroom_module_place_2 = 0.0125
+y_offest_bathroom_module_place_2 = 0.0125
 z_offest_bathroom_module_place_2 = -0.232
 
 # Offsets for placing Foundation
@@ -249,8 +249,8 @@ y_offset_wall_place_finetune_1 = 0.001
 z_offset_wall_place_finetune_1 = 0.005
 
 # Fine-tuning offsets for wall placement (second set)
-x_offset_wall_place_finetune_2 = -0.015  # <- bigger (right) integer for ifc2
-y_offset_wall_place_finetune_2 = -0.001 # positive would move it backwards
+x_offset_wall_place_finetune_2 = -0.01  # <- bigger -ve (right) integer for ifc2
+y_offset_wall_place_finetune_2 = 0.005 # positive would move it backwards
 z_offset_wall_place_finetune_2 = 0.078
 
 # Offsets for placing floor parts
@@ -259,13 +259,13 @@ y_offset_floor_place = 0.0085
 z_offset_floor_place = 0.272
 
 # Fine-tuning offsets for floor placement (first set)
-x_offset_floor_place_finetune_1 = 0.02
-y_offset_floor_place_finetune_1 = -0.013
+x_offset_floor_place_finetune_1 = -0.005
+y_offset_floor_place_finetune_1 = -0.027
 z_offset_floor_place_finetune_1 = 0
 
 # Fine-tuning offsets for floor placement (second set)
-x_offset_floor_place_finetune_2 = 0.02
-y_offset_floor_place_finetune_2 = -0.013
+x_offset_floor_place_finetune_2 = -0.005
+y_offset_floor_place_finetune_2 = -0.027
 z_offset_floor_place_finetune_2 = 0.072
 
 # Rotation adjustments
